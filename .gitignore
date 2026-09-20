@@ -1,0 +1,32 @@
+# The gate's own footprint. This file is the recipe in PLUNK-IN.md step 3, verbatim,
+# so this repo is itself an instance of the kit it ships. It is load-bearing, not
+# cosmetic: the C++ gate's `tree` stage fails when the gate's own output shows up as an
+# untracked file (`git ls-files --others --exclude-standard`), and the stage creates
+# .ci-logs/ and build*/ before it looks.
+
+# the gate's own footprint
+.ci-logs/
+build/
+build-*/
+.ci.env
+
+# python
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# deno
+# (nothing: deno.lock belongs in git)
+
+# defensive, beyond the shipped recipe
+_deps/
+*.log
+
+# NOT ignored, deliberately: .ci/ holds the clang-tidy baseline
+# (.ci/tidy-baseline.txt), which is tracked — it is this repo's accepted-findings list
+# and the tidy stage compares against it. Ignoring the directory would silently exempt
+# that file from the tree stage, which is the failure the stage exists to catch.
+# See templates/cpp/.ci.env.example and DESIGN-NOTES.md D11.

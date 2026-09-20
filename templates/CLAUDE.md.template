@@ -1,0 +1,78 @@
+# <PROJECT NAME> — the contract for whoever (or whatever) works in this repo
+
+<!--
+TEMPLATE. Copy to CLAUDE.md at the repo root, then delete every <angle-bracket>
+placeholder and every comment block like this one. Keep it short: this file is read by
+an agent (or a new human) at the START of every task, so length costs context on every
+run. Rung 1 of the ladder, and the highest-leverage file in the repo.
+
+The two rules that make it work:
+  1. Exact commands, not descriptions. "run the tests" is useless; `deno task test` is
+     not. Every command here must be copy-pasteable and correct.
+  2. The gotchas section is APPEND-ONLY and it grows from real failures. Every time an
+     agent gets something wrong, the fix goes here as a rule. A rule with no incident
+     behind it is a suggestion; a rule with one is load-bearing.
+-->
+
+## What this is
+
+<One paragraph: what the project does, who uses it, what "working" means. One paragraph,
+not a pitch.>
+
+## Commands
+
+| What | Command |
+|---|---|
+| Install / sync dependencies | `<command>` |
+| Run the gate (do this before you claim anything works) | `<scripts/gate.sh  or  tools/ci.sh>` |
+| Tests only | `<command>` |
+| Lint only | `<command>` |
+| Format the files you touched | `<command>` |
+| Run it locally | `<command>` |
+| Deploy | `<command>` — see `PLUNK-IN.md` for the verification that follows it |
+
+The gate's last line is the verdict: `GATE PASSED` or `GATE FAILED`. Never report work as
+done on a run that did not print `GATE PASSED`. If a stage SKIPs because a tool is
+missing on this machine, say so explicitly — a skipped check is not a passed check.
+
+## Architecture
+
+<The 3-5 components and how a request flows through them, in 10 lines or fewer. Name the
+files that are the seams: the route table, the schema, the CLI entry point, the module
+boundary. An agent that knows where the seams are makes small changes; one that does not
+rewrites things.>
+
+## Invariants
+
+<Every "two copies of one number must agree" rule in this repo, and where it is enforced.
+Example: `public/version.js` APP_VERSION must equal `sw.js` CACHE_NAME — enforced by the
+artifact-identity stage of the gate.>
+
+## Conventions
+
+- <Error handling, naming, commit message shape, test file naming — the rules that a
+  careful reader could not infer from the code.>
+- Tests live in `<path>`. A test file must be named `<pattern>` or it is silently never
+  run — the gate's test stage cannot see it.
+- Commits: `<conventional-commit shape used here>`, one logical change each.
+
+## Gotchas
+
+<!-- APPEND-ONLY. One line each, newest first, and each one is a real incident. -->
+
+- <Gotcha 1 — what breaks and what to do instead.>
+- <Gotcha 2>
+
+## Do not
+
+- <The things that look reasonable and are not, in this repo specifically.>
+- Do not edit generated files: `<paths>`. Change the source and regenerate.
+- Do not "fix" the gate by deleting a check. Every check carries its incident in
+  `INCIDENTS.md`; if you believe a check is wrong, say so in a comment and let a human
+  decide.
+
+## Incidents
+
+Every rule above that came from a failure is written down in `INCIDENTS.md` with the
+symptom, the check that now catches it, and why deleting the check re-enables the bug.
+Read it before removing anything that looks redundant.
