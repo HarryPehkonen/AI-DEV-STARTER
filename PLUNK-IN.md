@@ -308,7 +308,7 @@ stage runs every script in it against the gate that invoked it — offline, no k
 network, no build, under a second. A copy with no `tools/kit-probes/` SKIPs the stage on
 purpose: it means "carries no probe yet", which is not the same statement as "is behind".
 Record each probe file in `.ai-dev-starter.json` like any other copied artifact, so the claim
-is auditable (`docs/KIT-REVISION-CONVENTION.md` in the workspace that holds the kit, section
+is auditable (`docs/KIT-REVISION-CONVENTION.md` in this kit, section
 "So how drift is actually caught: probes"). A probe whose fix lands in more than one template
 names each of them in its own `# guards:` line, and the kit's runner (`tools/kit-probes.sh`)
 runs it once per guarded file — that is the kit's own check that all three templates satisfy

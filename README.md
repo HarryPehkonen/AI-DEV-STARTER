@@ -44,6 +44,7 @@ how a starter kit becomes a framework nobody uses.
 | `README.md` | this file — the ladder, the gate contract, how to plunk it in |
 | `PLUNK-IN.md` | the copy-paste checklist that upgrades an existing repo, per language |
 | `INCIDENTS.md` | the incident-log convention, the kit's own incidents, and one worked example |
+| `docs/KIT-REVISION-CONVENTION.md` | how a repo records the kit revision it was wired from, and which kit fixes it has adopted or declined since |
 | `templates/CLAUDE.md.template` | the agent contract doc, with the gotchas section pre-shaped |
 | `templates/deno/gate.sh` | Deno gate: lint → tests → format (touched) → artifact identity |
 | `templates/python/gate.sh` | Python gate: lint → format (touched) → tests → types → a clean environment (a wheel in a fresh venv, or `requirements.txt` + the suite from a fresh venv) → identity |
