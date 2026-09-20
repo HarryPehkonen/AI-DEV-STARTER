@@ -154,7 +154,7 @@ Recorded because these were the live judgement calls, and the shipped answer is 
 
 ---
 
-## 5. Decisions taken (D1–D10), as shipped
+## 5. Decisions taken (D1–D13), as shipped
 
 - **D1 — No files beyond the decided layout.** Only `templates/cpp/.ci.env.example` earns an
   example file; the deno and python gates have no knobs worth configuring.
@@ -232,6 +232,36 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   that reason. Rejected: a `conftest.py` `sys.path` shim per repo — that moves the gate's
   layout knowledge into every repo that copies the gate, which is the drift this kit exists to
   remove.
+- **D13 — Drift between a repo's copy and the kit is caught by a probe per propagating fix,
+  not by a hash and not by a diff stage.** (2026-09-20, from card `t_0cc793fb`.) A repo's
+  `.ai-dev-starter.json` record answers *provenance and intent* — "what did this repo take,
+  and did it adapt it on purpose?" — and it cannot answer *lateness*. That was measured
+  rather than argued: on four genuine one-fix-behind copies of `tools/ci.sh`, taken from each
+  repo's own history, the record's own procedure returned "nothing to do" 4/4 (the recorded
+  kit hash still matched, because the kit had not moved, and the recorded repo hash still
+  matched, because nobody had edited the copy). A byte-compare stage against the kit would
+  have gone red on those repos the day it landed — their copies are *forks* (60, 89, 582 and
+  586 differing lines: kit header replaced, stages added and dropped, repo-local defaults)
+  and a fork's only explanation today is prose nothing parses — while the diff *size* inverts
+  as a signal: a lagging copy is missing 27 kit lines and a verified, current record is
+  missing 125. **Diff size measures divergence from the kit, not lateness.**
+  Shipped instead: `probes/<slug>.sh` — one small script per kit fix, taking a gate script
+  and holding it to that fix's contract by name and by behaviour, offline, no kit checkout,
+  no build, under a second (reference: `probes/tidy-baseline.sh`, 7 checks) — plus
+  `tools/kit-probes.sh`, the kit's own run of every probe against the file it guards, and a
+  `kitprobes` stage in all three template gates that runs each script in the repo's
+  `tools/kit-probes/` against *that* gate. The rule it enforces: **a fix that must propagate
+  ships a probe.** Measured: the kit verifies 7/7; the four repos at HEAD verify with **no
+  false positives**; the same four one fix behind report `PROBE FAILED`, rc 1.
+  Rejected: (a) a byte-compare stage against the kit at `revision` — red on 4/4 immediately,
+  and a fork's differences are decisions, not lag; (b) a hash-based drift check — structurally
+  incapable, it never compares the repo's file against the kit's; (c) comparing line counts —
+  divergence, not lateness.
+  Limits, stated rather than hidden: a probe is name- and contract-level, so a semantic
+  regression *inside* a function that is still present is not caught — that costs a real
+  build and a real run (which is what the port card did by hand, four times); and a probe has
+  to be written per fix, so this is a discipline, not a free guarantee. A copy with no
+  `tools/kit-probes/` SKIPs the stage on purpose: "carries no probe yet" is not "is behind".
 
 ---
 
@@ -261,6 +291,11 @@ Recorded because these were the live judgement calls, and the shipped answer is 
    baseline in the one form the comparison reads, and tells you to commit it — D11). The
    line-blind comparison means a second identical finding in a file that already has one is
    not distinguished from the first.
+9. **Probes are per repo and per fix, and their absence is a SKIP.** The `kitprobes` stage
+   checks the probes a copy actually carries, so a kit fix that shipped a probe the copy never
+   took is invisible to it (the record's `kit_sha256` is what shows the kit moved on, and the
+   port is a hand decision). A semantic regression inside a function that is still present is
+   likewise out of reach — that needs a build and a run. Both limits are restated in D13.
 
 ---
 

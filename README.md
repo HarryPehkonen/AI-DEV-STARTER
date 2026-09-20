@@ -47,13 +47,21 @@ how a starter kit becomes a framework nobody uses.
 | `templates/CLAUDE.md.template` | the agent contract doc, with the gotchas section pre-shaped |
 | `templates/deno/gate.sh` | Deno gate: lint → tests → format (touched) → artifact identity |
 | `templates/python/gate.sh` | Python gate: lint → format (touched) → tests → types → a clean environment (a wheel in a fresh venv, or `requirements.txt` + the suite from a fresh venv) → identity |
-| `templates/cpp/ci.sh` | C++ gate, two tiers and nine stages (copy of the proven one) |
+| `templates/cpp/ci.sh` | C++ gate, two tiers and ten stages (copy of the proven one) |
 | `templates/cpp/.ci.env.example` | every knob the C++ gate has, with defaults and why |
 | `templates/hooks/pre-commit` | fast tier — runs on `git commit` |
 | `templates/hooks/pre-push` | full tier — runs on `git push` |
+| `probes/<slug>.sh` | one per kit fix that must propagate: takes a gate script and exits non-zero when that fix is missing from it |
+| `tools/kit-probes.sh` | the kit's own run of every probe, against the kit file it guards (`--list` shows what each one checks) |
 
 Both hook files dispatch to whatever gate the repo has (`tools/ci.sh` for C++,
 `scripts/gate.sh` for Deno/Python), so the same two hooks can be copied into any repo.
+
+A copied repo does not sync itself, so **a fix that must propagate ships a probe**: the
+probe is copied into the repo as `tools/kit-probes/<slug>.sh`, and the gate's `kitprobes`
+stage runs every probe it finds there against itself. It needs no kit checkout, no network
+and no build, and it fails the push on the machine that would otherwise have pushed the lag.
+`PLUNK-IN.md` step 9 has the rule, the why, and the limits.
 
 ---
 

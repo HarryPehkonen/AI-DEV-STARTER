@@ -19,7 +19,8 @@
 # Two tiers, because a C++ full run is minutes and a commit cannot afford minutes:
 #
 #   fast  (pre-commit)  build tests
-#   full  (pre-push)    --require-clean tree format build tests version asan tsan tidy pristine
+#   full  (pre-push)    --require-clean tree format kitprobes build tests version asan tsan
+#                       tidy pristine
 #
 # Configuration lives in .ci.env (gitignored, optional); every knob has a default here,
 # so the repo works with no config at all. See .ci.env.example.
@@ -50,7 +51,7 @@ CI_TSAN_BUILD_DIR=${CI_TSAN_BUILD_DIR:-build-tsan}
 CI_LOG_DIR=${CI_LOG_DIR:-.ci-logs}
 CI_STRICT_TOOLS=${CI_STRICT_TOOLS:-0}           # 1 = a missing tool fails instead of SKIPping
 CI_KEEP_TMP=${CI_KEEP_TMP:-0}                   # 1 = keep the pristine temp dir for inspection
-CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"tree format build tests version asan tsan tidy pristine"}
+CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"tree format kitprobes build tests version asan tsan tidy pristine"}
 CI_TIDY_BASELINE=${CI_TIDY_BASELINE:-.ci/tidy-baseline.txt}
 CI_BUILD_TYPE=${CI_BUILD_TYPE:-Debug}
 # The source set the format and tidy stages own. Extend for your layout.
@@ -90,6 +91,11 @@ Stages:
               footprint (build dirs, logs, .ci.env) is ignored; --require-clean also
               fails on uncommitted changes to tracked files
   format      clang-format drift — dry run against the repo .clang-format
+  kitprobes   the kit fixes this copy claims to carry, held to their contracts: every
+              script in tools/kit-probes/ checks one kit fix in THIS gate script by name
+              and by behaviour (offline, no kit checkout, no build, <1 s). A missing
+              directory SKIPs: it means this copy carries no probe yet, not that it is
+              behind. The probes and the rule: docs/KIT-REVISION-CONVENTION.md
   build       cmake configure + build, zero warnings (the stage counts them even where
               -Werror is not wired onto a target)
   tests       the test suite (ctest by default), every failure reported
@@ -312,6 +318,46 @@ stage_format() {
     fi
     grep -oE '^[^:]+\.(cpp|cc|cxx|hpp|hh|h)' "$CI_LOG_DIR/format.log" | sort -u | sed 's/^/      /'
     ci_fail format "clang-format drift in the files listed above (fix: clang-format -i <those files>)" "$CI_LOG_DIR/format.log"
+}
+
+# ---------------------------------------------------------------- kit probes
+# A fix that must propagate ships a probe (docs/KIT-REVISION-CONVENTION.md). Each script
+# in tools/kit-probes/ holds this gate to ONE kit fix's contract — name and behaviour, not
+# bytes — and exits non-zero when the fix is absent. The directory IS the list of fixes
+# this copy claims to carry, so absence fails HERE, in under a second, on the machine that
+# would otherwise push the lag: no kit checkout, no network, no build.
+#
+# Why not a hash or a diff against the kit: the copies of this file are forks (a repo's
+# adapted stages, its own defaults, 60-586 differing lines), and diff SIZE measures
+# divergence, not lateness — a one-fix-behind copy is missing 27 kit lines while a
+# verified current record is missing 125. See the convention for the measurement.
+#
+# It is name- and contract-level: a semantic regression INSIDE a function that is still
+# present is not caught. That needs a real build and a real run, which is what the port
+# did by hand; the probe is the cheap net, not the whole net.
+stage_kitprobes() {
+    ci_begin "kit probes (the fixes this copy claims to carry)"
+    local self probe name failed=0
+    self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    if [ ! -d "$REPO_ROOT/tools/kit-probes" ]; then
+        ci_skip kitprobes "no tools/kit-probes/ — this copy carries no kit probe yet"
+        return 0
+    fi
+    for probe in "$REPO_ROOT"/tools/kit-probes/*.sh; do
+        [ -f "$probe" ] || continue
+        name="$(basename "$probe")"
+        if bash "$probe" "$self" "$REPO_ROOT"; then
+            printf '    ok   %s\n' "$name"
+        else
+            printf '    FAIL %s — this gate is missing that kit fix\n' "$name"
+            failed=1
+        fi
+    done
+    if [ "$failed" = "1" ]; then
+        ci_fail kitprobes "a probe failed: this copy is behind a kit fix — port it from the kit (tools/kit-probes/ names which)"
+    fi
+    printf '    every probe in tools/kit-probes/ verified against this gate\n'
+    ci_pass kitprobes
 }
 
 stage_build() {

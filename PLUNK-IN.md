@@ -130,7 +130,7 @@ cannot afford minutes:
 | Tier | Hook | Stages | Cost |
 |---|---|---|---|
 | fast | `pre-commit` | `build tests` | ~6 s on a warm build dir |
-| full | `pre-push` | `--require-clean tree format build tests version asan tsan tidy pristine` | minutes |
+| full | `pre-push` | `--require-clean tree format kitprobes build tests version asan tsan tidy pristine` | minutes |
 
 ---
 
@@ -270,17 +270,62 @@ stops the check being deleted six months from now by someone who sees no reason 
 
 ---
 
+## Step 9 — keep your copy true to the kit: probes
+
+Copies do not sync. A defect fixed in the kit stays live in every repo that copied that file
+earlier — which is how one broken clang-tidy baseline recipe was found four separate times
+before anyone noticed it was one bug. The rule that closes that class:
+
+> **A fix that must propagate ships a probe.**
+
+A probe is a small script in the kit's `probes/` that takes a gate script and exits non-zero
+when ONE kit fix is absent from it — checked **by name and by behaviour**, not by hash and not
+by diff. The reference is `probes/tidy-baseline.sh` (7 checks: the normaliser exists; it
+strips the repo root and `:line:col` when fed a synthetic finding; both sides of the
+comparison go through it; `--write-tidy-baseline` shares it). To carry it:
+
+```bash
+mkdir -p tools/kit-probes
+cp "$KIT/probes/tidy-baseline.sh" tools/kit-probes/    # one file per fix you carry
+tools/ci.sh kitprobes                                  # or: scripts/gate.sh
+```
+
+`tools/kit-probes/` **is the list of fixes your copy claims to carry**, and the `kitprobes`
+stage runs every script in it against the gate that invoked it — offline, no kit checkout, no
+network, no build, under a second. A copy with no `tools/kit-probes/` SKIPs the stage on
+purpose: it means "carries no probe yet", which is not the same statement as "is behind".
+Record each probe file in `.ai-dev-starter.json` like any other copied artifact, so the claim
+is auditable (`docs/KIT-REVISION-CONVENTION.md` in the workspace that holds the kit, section
+"So how drift is actually caught: probes").
+
+**Why not compare the file against the kit.** Because a copy is a *fork*, not a copy, and the
+two answers a byte or diff comparison can give are both wrong here: it reports every local
+decision as drift (the four real forks differ from the kit by 60, 89, 582 and 586 lines, and
+nothing parses the prose that explains them), and its magnitude inverts as a signal — a copy
+that is one fix behind is missing 27 kit lines while a verified, current copy is missing 125.
+**Diff size measures divergence from the kit, not lateness.** A hash tells you what a repo
+took and whether it adapted it on purpose; it cannot tell you what it is missing.
+
+**What a probe cannot do** (know the limits, rather than trusting the green): it is name- and
+contract-level, so a semantic regression *inside* a function that is still present is not
+caught — that costs a real build and a real run; and a probe must be written per fix, so the
+rule is a discipline, not a free guarantee. The kit runs its own probes with
+`tools/kit-probes.sh` (`--list` shows what each one guards); run it before publishing a change
+to a probe or to a template a probe guards.
+
+---
+
 ## Appendix — what each gate runs
 
 **Deno** — `lint` (`deno task lint`) → `tests` (full `deno task test`) → `format`
 (`deno fmt --check`, touched files only) → `artifact identity` (APP_VERSION ↔
-CACHE_NAME, plus "public/ changed ⇒ version.js was bumped").
+CACHE_NAME, plus "public/ changed ⇒ version.js was bumped") → `kit probes` (step 9).
 
 **Python** — `tools` (which ruff/pytest/mypy answered, and from where) → `lint`
 (`ruff check .`) → `format` (`ruff format --check`, touched files) → `tests` (`pytest -q`;
 zero collected tests is a failure) → `types` (`mypy`, only when `[tool.mypy]`/`mypy.ini`
-exists) → `clean environment` → `artifact identity`. The last two depend on the branch the
-gate detected (it prints which one on the first line):
+exists) → `clean environment` → `artifact identity` → `kit probes` (step 9). The last three
+depend on the branch the gate detected (it prints which one on the first line):
 
 - **packaged** (`pyproject.toml`) — sdist + wheel built, and the **wheel installed into a
   throwaway venv**, imported there, with its console script asked for `--version`; identity =
@@ -292,9 +337,10 @@ gate detected (it prints which one on the first line):
   tree's own layout on `sys.path` (`src/` or the repo root), because here the tree is the
   artifact; identity = the tracked `VERSION` file ↔ the `__version__` the code reports.
 
-**C++** — nine stages, run in this order in the full tier: `tree` (every file committed
+**C++** — ten stages, run in this order in the full tier: `tree` (every file committed
 or ignored; the gate's own footprint ignored; `--require-clean` fails on uncommitted
-edits) → `format` (clang-format on touched files) → `build` (configure + build, and it
+edits) → `format` (clang-format on touched files) → `kitprobes` (step 9: every probe in
+`tools/kit-probes/`, against this gate script) → `build` (configure + build, and it
 counts warnings even where `-Werror` is not wired on) → `tests` (ctest) → `version`
 (CMake VERSION ↔ the generated header, optionally every binary's `--version`) → `asan`
 (ASan+UBSan in a separate build dir) → `tsan` (ThreadSanitizer) → `tidy` (clang-tidy,
