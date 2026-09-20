@@ -122,7 +122,20 @@ $EDITOR .ci.env
 
 # 2. the source globs the format and tidy stages own, if your layout differs
 #      CI_SOURCE_GLOBS="'src/*.cpp' 'include/mylib/*.hpp'"
+
+# 3. the SECOND configuration the `release` stage builds and tests. The default is
+#    Release, which is what a pipeline that passes no build type usually ends up
+#    building; point it at whatever YOUR pipeline builds, so the gate checks the
+#    configuration that actually ships rather than a second guess at it.
+#      CI_RELEASE_BUILD_TYPE=Release
 ```
+
+Two configurations, two knobs: every stage except `release` builds `CI_BUILD_TYPE`
+(`Debug` by default), and `release` builds `CI_RELEASE_BUILD_TYPE` in its own build dir.
+One configuration is not enough — a `warning:` that exists only under `-O2`/`-O3`, or code
+that only misbehaves once `NDEBUG` removes the asserts, is invisible to a gate that never
+configures that way, and the repo's own pipeline is the one that decides. Both build dirs
+(`build*/`) must be in `.gitignore` (step 3).
 
 C++ is the one language with two tiers, because a full run is minutes and a commit
 cannot afford minutes:
@@ -130,7 +143,7 @@ cannot afford minutes:
 | Tier | Hook | Stages | Cost |
 |---|---|---|---|
 | fast | `pre-commit` | `build tests` | ~6 s on a warm build dir |
-| full | `pre-push` | `--require-clean tree format kitprobes build tests version asan tsan tidy pristine` | minutes |
+| full | `pre-push` | `--require-clean tree format kitprobes build tests release version asan tsan tidy pristine` | minutes |
 
 ---
 
@@ -337,13 +350,17 @@ depend on the branch the gate detected (it prints which one on the first line):
   tree's own layout on `sys.path` (`src/` or the repo root), because here the tree is the
   artifact; identity = the tracked `VERSION` file ↔ the `__version__` the code reports.
 
-**C++** — ten stages, run in this order in the full tier: `tree` (every file committed
+**C++** — eleven stages, run in this order in the full tier: `tree` (every file committed
 or ignored; the gate's own footprint ignored; `--require-clean` fails on uncommitted
 edits) → `format` (clang-format on touched files) → `kitprobes` (step 9: every probe in
 `tools/kit-probes/`, against this gate script) → `build` (configure + build, and it
-counts warnings even where `-Werror` is not wired on) → `tests` (ctest) → `version`
-(CMake VERSION ↔ the generated header, optionally every binary's `--version`) → `asan`
-(ASan+UBSan in a separate build dir) → `tsan` (ThreadSanitizer) → `tidy` (clang-tidy,
+counts warnings even where `-Werror` is not wired on) → `tests` (ctest) → `release`
+(the **second configuration**: `CI_RELEASE_BUILD_DIR` configured at
+`CI_RELEASE_BUILD_TYPE` — `Release` by default — built with its own `warning:` count and
+run through the same test command; every other stage builds `CI_BUILD_TYPE`, so without
+this one a repo whose own pipeline builds an optimized configuration never checks one) →
+`version` (CMake VERSION ↔ the generated header, optionally every binary's `--version`) →
+`asan` (ASan+UBSan in a separate build dir) → `tsan` (ThreadSanitizer) → `tidy` (clang-tidy,
 only NEW findings vs a baseline; capture the baseline with
 `tools/ci.sh --write-tidy-baseline` rather than by hand) → `pristine` (`git archive HEAD` →
 build → test).

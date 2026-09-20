@@ -47,7 +47,7 @@ how a starter kit becomes a framework nobody uses.
 | `templates/CLAUDE.md.template` | the agent contract doc, with the gotchas section pre-shaped |
 | `templates/deno/gate.sh` | Deno gate: lint → tests → format (touched) → artifact identity |
 | `templates/python/gate.sh` | Python gate: lint → format (touched) → tests → types → a clean environment (a wheel in a fresh venv, or `requirements.txt` + the suite from a fresh venv) → identity |
-| `templates/cpp/ci.sh` | C++ gate, two tiers and ten stages (copy of the proven one) |
+| `templates/cpp/ci.sh` | C++ gate, two tiers and eleven stages (copy of the proven one) |
 | `templates/cpp/.ci.env.example` | every knob the C++ gate has, with defaults and why |
 | `templates/hooks/pre-commit` | fast tier — runs on `git commit` |
 | `templates/hooks/pre-push` | full tier — runs on `git push` |

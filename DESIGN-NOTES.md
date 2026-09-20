@@ -2,7 +2,7 @@
 
 **What is authoritative here.** The shipped templates plus this file. Every decision below
 records the panel advice it came from and whether it was **adopted**, **adapted**, or
-**not adopted** (with the reason). Downstream cards should read `D1`–`D12` and
+**not adopted** (with the reason). Downstream cards should read `D1`–`D14` and
 "Known gaps" as the spec; the panel's raw answers are in the traces named below.
 
 ---
@@ -71,7 +71,10 @@ to FAIL. Deno: env → lint → tests → format (touched) → identity. Python:
 → lint → format (touched) → tests → types (only when configured) → identity → build →
 installed smoke, all in `mktemp -d`, never into the repo tree. C++: `build tests` for
 pre-commit, `--require-clean tree format build tests version asan tsan tidy pristine` for
-pre-push; **drop** `wire`/`fuzz`/`std`/`conform`/`cli`/`coverage` from the shipped default
+pre-push (**the shipped set has grown twice since this advice — `kitprobes`, D13, and
+`release`, D14; the live lists are the tier table in `PLUNK-IN.md` step 2 and the `ci.sh`
+header, and `tools/ci.sh --list` derives them from the script**); **drop**
+`wire`/`fuzz`/`std`/`conform`/`cli`/`coverage` from the shipped default
 set as project-shaped; **keep** `version`, "else the decided cpp artifact-identity
 invariant is documented but not enforced — exactly the failure this kit exists to prevent."
 
@@ -154,13 +157,17 @@ Recorded because these were the live judgement calls, and the shipped answer is 
 
 ---
 
-## 5. Decisions taken (D1–D13), as shipped
+## 5. Decisions taken (D1–D14), as shipped
 
 - **D1 — No files beyond the decided layout.** Only `templates/cpp/.ci.env.example` earns an
   example file; the deno and python gates have no knobs worth configuring.
 - **D2 — One gate script, two hooks, per language.** Deno/Python: the whole gate is seconds,
   so `pre-commit` runs all of it and `pre-push` runs the same file. C++: two tiers
-  (`build tests` at commit; the nine-stage full run at push), because a full C++ run is minutes.
+  (`build tests` at commit; the full run at push), because a full C++ run is minutes. The
+  stage count is deliberately not repeated here: `tools/ci.sh --list` derives it from the
+  defined stage functions, and the two places a reader needs the list are the tier table in
+  `PLUNK-IN.md` step 2 and the `ci.sh` header. (Counts written into prose went stale twice —
+  `kitprobes` (D13) and `release` (D14) each added a stage without this line noticing.)
 - **D3 — The artifact-identity stage replaces jsonTools' `wire` stage.** `wire` is a
   multi-binary project's problem; the portable equivalent is "two copies of one number must
   agree", exactly one per language, documented in `PLUNK-IN.md` step 4.
@@ -272,6 +279,41 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   build and a real run (which is what the port card did by hand, four times); and a probe has
   to be written per fix, so this is a discipline, not a free guarantee. A copy with no
   `tools/kit-probes/` SKIPs the stage on purpose: "carries no probe yet" is not "is behind".
+- **D14 — The C++ template builds and tests a SECOND configuration, on purpose.** (2026-09-20,
+  from card `t_5c2a8ab2`, found on `t_45a28893`.) Every stage configured `CI_BUILD_TYPE`, whose
+  kit default is `Debug`, while the configuration a repo's own pipeline builds is decided
+  elsewhere: a workflow that passes no build type, a `./build.sh`, or a FetchContent'd subproject
+  that sets `CMAKE_BUILD_TYPE=Release` on its consumers. When those two disagree, **the gate is
+  green about a configuration nothing ships**. Computo measured the cost: `-O3 -DNDEBUG` produced
+  a gcc 14 `-Werror=maybe-uninitialized` failure, GitHub Pages deployed red for twelve days, and
+  `./build.sh` was broken on Harri's own box the whole time — behind a green local gate. The kit
+  shipped a `release` stage rather than a note: a second build dir at `CI_RELEASE_BUILD_TYPE`
+  (`Release` by default), the `build` stage's `warning:` rule applied to *its* log, the same test
+  command run in that dir, full tier only, and its build dir audited by the `tree` stage. Every
+  other stage still builds `CI_BUILD_TYPE`: the second configuration is added, not substituted.
+  Cost, measured before choosing (Permuto at HEAD in a throwaway clone — a repo with no such
+  stage: 17 TUs, 4 cores, load ~7.5): configure 2 s + cold build **88 s**, then **6 s** on a
+  one-source push and **0 s** unchanged, because the build dir is reused. Computo's own instance:
+  146 s cold, 4.6 s warm, 0.3 s idle. Both land *green* (0 warnings in Release), so the stage
+  starts as a guard rather than a cleanup, and the cold cost lives only in the full tier —
+  pre-commit keeps `build tests`. Probed by `probes/optimized-stage.sh` (7 checks: the stage
+  exists, its configuration is not Debug, it holds its own log to the `warning:` rule, it runs
+  the tests in its own dir, it is in `CI_DEFAULT_STAGES`, and the `tree` stage knows its build
+  dir); six false-fix mutants are each caught by exactly one check.
+  **Rejected: recording "Debug only" as a known gap** (the card's option 2 — `DESIGN-NOTES` prose
+  plus a warning line in the template header). The measurement is the argument: at ~5 s per push
+  inside a 6–15 minute full tier the cost is inside the noise, the change is additive, and this
+  kit's whole purpose is to propagate this class — a note is read by the next repo *after* it has
+  already lost the twelve days, and it leaves every fork that has no such stage carrying the blind
+  spot today (Permuto and JSOM; jsonTools is the mirror case — Release everywhere, Debug
+  unchecked). Rejected too: handing the second configuration to `pristine` — `pristine` is about
+  *where* the build happens (`git archive HEAD`), not *how*, and overloading it hides the second
+  configuration behind a stage nobody expects to configure anything.
+  Found while measuring, fixed in the same commit: `templates/cpp/.ci.env.example` still carried
+  the pre-D13 stage list, so `cp .ci.env.example .ci.env` silently dropped `kitprobes` from every
+  hand run (pushes were unaffected only because `templates/hooks/pre-push` spells its own list
+  out). Same family as everything else this kit collects: a documented value that quietly
+  switches a check off.
 
 ---
 

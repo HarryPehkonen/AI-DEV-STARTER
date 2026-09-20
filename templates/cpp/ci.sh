@@ -19,8 +19,8 @@
 # Two tiers, because a C++ full run is minutes and a commit cannot afford minutes:
 #
 #   fast  (pre-commit)  build tests
-#   full  (pre-push)    --require-clean tree format kitprobes build tests version asan tsan
-#                       tidy pristine
+#   full  (pre-push)    --require-clean tree format kitprobes build tests release version
+#                       asan tsan tidy pristine
 #
 # Configuration lives in .ci.env (gitignored, optional); every knob has a default here,
 # so the repo works with no config at all. See .ci.env.example.
@@ -51,9 +51,15 @@ CI_TSAN_BUILD_DIR=${CI_TSAN_BUILD_DIR:-build-tsan}
 CI_LOG_DIR=${CI_LOG_DIR:-.ci-logs}
 CI_STRICT_TOOLS=${CI_STRICT_TOOLS:-0}           # 1 = a missing tool fails instead of SKIPping
 CI_KEEP_TMP=${CI_KEEP_TMP:-0}                   # 1 = keep the pristine temp dir for inspection
-CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"tree format kitprobes build tests version asan tsan tidy pristine"}
+CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"tree format kitprobes build tests release version asan tsan tidy pristine"}
 CI_TIDY_BASELINE=${CI_TIDY_BASELINE:-.ci/tidy-baseline.txt}
 CI_BUILD_TYPE=${CI_BUILD_TYPE:-Debug}
+# The SECOND configuration, built and tested by the `release` stage. A gate whose every
+# stage builds one build type cannot see the class the other one produces (a `warning:`
+# that only exists under -O2/-O3, code that only misbehaves with NDEBUG). Point this at
+# whatever the repo's own pipeline builds; Release is the usual answer.
+CI_RELEASE_BUILD_DIR=${CI_RELEASE_BUILD_DIR:-build-release}
+CI_RELEASE_BUILD_TYPE=${CI_RELEASE_BUILD_TYPE:-Release}
 # The source set the format and tidy stages own. Extend for your layout.
 CI_SOURCE_GLOBS=${CI_SOURCE_GLOBS:-"'*.cpp' '*.cc' '*.cxx' '*.hpp' '*.hh' '*.h'"}
 # Where the SECOND copy of the version number lives. Two forms are both fine:
@@ -99,6 +105,10 @@ Stages:
   build       cmake configure + build, zero warnings (the stage counts them even where
               -Werror is not wired onto a target)
   tests       the test suite (ctest by default), every failure reported
+  release     the SAME suite in a SECOND configuration (CI_RELEASE_BUILD_TYPE, Release
+              by default): configure, build, count `warning:` in its own log, run the
+              tests. Every other stage builds CI_BUILD_TYPE, so without this stage a
+              repo whose own pipeline builds an optimized configuration never checks one
   version     one version number: project(VERSION) in CMakeLists.txt == the header the
               build generates/uses, and the number every binary prints for --version
   asan        separate build dir, ASan+UBSan, same suite
@@ -234,7 +244,7 @@ stage_tree() {
     # The gate creates these; a .gitignore that does not cover them makes the next run
     # fail the moment it writes a log. Create them first: git check-ignore cannot match
     # a directory pattern against a path that does not exist yet.
-    mkdir -p "$CI_BUILD_DIR" "$CI_ASAN_BUILD_DIR" "$CI_TSAN_BUILD_DIR" "$CI_LOG_DIR"
+    mkdir -p "$CI_BUILD_DIR" "$CI_ASAN_BUILD_DIR" "$CI_TSAN_BUILD_DIR" "$CI_RELEASE_BUILD_DIR" "$CI_LOG_DIR"
 
     local untracked
     untracked=$(git ls-files --others --exclude-standard)
@@ -271,7 +281,7 @@ stage_tree() {
     fi
 
     local path missing=0
-    for path in "$CI_BUILD_DIR" "$CI_ASAN_BUILD_DIR" "$CI_TSAN_BUILD_DIR" "$CI_LOG_DIR" ".ci.env"; do
+    for path in "$CI_BUILD_DIR" "$CI_ASAN_BUILD_DIR" "$CI_TSAN_BUILD_DIR" "$CI_RELEASE_BUILD_DIR" "$CI_LOG_DIR" ".ci.env"; do
         if ! git check-ignore -q "$path" 2>/dev/null; then
             printf '    NOT ignored: %s\n' "$path"
             missing=$((missing + 1))
@@ -391,6 +401,48 @@ stage_tests() {
     fi
     grep -E "tests passed|100% tests passed" "$CI_LOG_DIR/tests.log" | tail -1 | sed 's/^/      /'
     ci_pass tests
+}
+
+# The optimized configuration, in its own build dir. Every other stage builds
+# CI_BUILD_TYPE=Debug, while the repo's own pipeline (a workflow that passes no build type,
+# a ./build.sh, a consumer that defaults -O3) can build something else entirely - so the
+# configuration that really runs can be the one no stage ever configures. Measured cost of
+# the class (Computo, 2026-09-20): a red Pages deploy for twelve days and a ./build.sh that
+# had been broken on the developer's own box the whole time, behind a GREEN local gate.
+# Both the warning rule and the test command match the Debug stages on purpose: the point is
+# the SAME code under optimizations, not a differently-graded run. Full tier only: a cold
+# optimized build is 88-146 s, then ~5 s on a one-source push and ~0 s unchanged, because
+# the build dir is reused.
+stage_release() {
+    ci_begin "release ($CI_RELEASE_BUILD_TYPE: the configuration an optimized build uses)"
+    # No -DCMAKE_EXPORT_COMPILE_COMMANDS here: the compile database is the `build` stage's
+    # (tidy reads $CI_BUILD_DIR), and a second one would only be a decoy.
+    # shellcheck disable=SC2086
+    cmake -S . -B "$CI_RELEASE_BUILD_DIR" -DCMAKE_BUILD_TYPE="$CI_RELEASE_BUILD_TYPE" \
+        ${CI_CMAKE_FLAGS:-} > "$CI_LOG_DIR/release-configure.log" 2>&1 \
+        || ci_fail release "cmake configure failed" "$CI_LOG_DIR/release-configure.log"
+    cmake --build "$CI_RELEASE_BUILD_DIR" -j "$CI_JOBS" > "$CI_LOG_DIR/release-build.log" 2>&1 \
+        || ci_fail release "optimized build failed (-Werror is on: a warning is a build failure)" "$CI_LOG_DIR/release-build.log"
+    # The same rule the `build` stage applies, to this log instead: -Werror only covers the
+    # targets it is wired onto, and an optimization-dependent diagnostic is a warning before
+    # it is an error. This is the check that reports the class the Debug stages cannot see.
+    local warns
+    warns=$(grep -c 'warning:' "$CI_LOG_DIR/release-build.log" || true)
+    if [ "${warns:-0}" -gt 0 ]; then
+        grep 'warning:' "$CI_LOG_DIR/release-build.log" | head -5 | sed 's/^/      /'
+        ci_fail release "$warns compiler warning(s) in an optimized build" "$CI_LOG_DIR/release-build.log"
+    fi
+    printf '    built with no warnings at %s\n' "$CI_RELEASE_BUILD_TYPE"
+    local saved="$CI_TEST_CMD"
+    # shellcheck disable=SC2086
+    CI_TEST_CMD="$(printf '%s' "$saved" | sed "s|\$CI_BUILD_DIR|$CI_RELEASE_BUILD_DIR|g")"
+    if ! run_tests "$CI_RELEASE_BUILD_DIR" "$CI_LOG_DIR/release-tests.log"; then
+        grep -E "FAILED|Failed|\*\*\*Failed|assert" "$CI_LOG_DIR/release-tests.log" | head -30 | sed 's/^/      /'
+        ci_fail release "test failures in an optimized build (all of them are above; full output in the log)" "$CI_LOG_DIR/release-tests.log"
+    fi
+    CI_TEST_CMD="$saved"
+    grep -E "tests passed|100% tests passed" "$CI_LOG_DIR/release-tests.log" | tail -1 | sed 's/^/      /'
+    ci_pass release
 }
 
 stage_version() {

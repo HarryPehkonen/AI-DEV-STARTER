@@ -14,6 +14,41 @@ arbitrary checks get deleted. The rationale is the load-bearing part.
 
 ---
 
+## 2026-09-20 — a green C++ gate certified a configuration the pipeline never built
+
+What broke:        Computo's GitHub Pages deploy was red from 2026-09-08 and its `./build.sh` had
+                   been broken on Harri's own laptop the whole time, while `tools/ci.sh` passed
+                   every stage on every run. Both halves have one cause: every stage of the
+                   template built `CI_BUILD_TYPE` (kit default `Debug`) while the deploy built
+                   `-O3 -DNDEBUG` — its workflow passed no build type and a FetchContent'd
+                   subproject set `CMAKE_BUILD_TYPE=Release` on its consumers. The optimized
+                   build hit a gcc 14 `-Werror=maybe-uninitialized` failure that no Debug stage
+                   can produce, so the gate was measuring a different program from the one that
+                   shipped. The kit's half of this is that the C++ template shipped **no stage
+                   that builds an optimized configuration at all**, and `CI_BUILD_TYPE=Debug` is
+                   its default, so every copy inherited the blind spot: JSOM, jsonTools, Permuto,
+                   Computo. Fixed on the Computo side in card `t_45a28893`; the kit side is card
+                   `t_5c2a8ab2` (this commit). Measuring it also turned up
+                   `templates/cpp/.ci.env.example` still listing the pre-`a6ad2ea` stages, so
+                   `cp .ci.env.example .ci.env` silently dropped `kitprobes` from every hand run
+                   — same family, a documented value that quietly switches a check off.
+Check added:       `templates/cpp/ci.sh`: a `release` stage — a second build dir configured at
+                   `CI_RELEASE_BUILD_TYPE` (`Release` by default), the `build` stage's
+                   `warning:` rule applied to *its* log, the same test command run in that dir,
+                   in `CI_DEFAULT_STAGES` and in `templates/hooks/pre-push`, full tier only (a
+                   cold optimized build is 88–146 s and must never sit in a commit path).
+                   `probes/optimized-stage.sh` (7 checks) holds every copy to it, so the stage
+                   travels with the fix: the kit's own run is `tools/kit-probes.sh`. The
+                   `.ci.env.example` list was corrected in the same commit.
+Why it must stay:  A gate that configures one build type can be green while the configuration
+                   that actually ships is never compiled — and the repo that finds out pays in
+                   deploys, not in warnings. Deleting the stage (or dropping it from the default
+                   tier or the push hook) restores exactly that: locally green, red in CI, with
+                   nothing in the local output to say why. Deleting the `warning:` count on its
+                   own log is subtler and just as bad — the build still happens and still passes,
+                   because `-Werror` only covers the targets it is wired onto, which is precisely
+                   how the twelve days happened.
+
 ## 2026-09-20 — the C++ gate printed GATE PASSED after executing one stage of ten
 
 What broke:        A `git push` on Computo ran the full tier and printed `all 10 stage(s)
