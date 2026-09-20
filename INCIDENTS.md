@@ -14,6 +14,57 @@ arbitrary checks get deleted. The rationale is the load-bearing part.
 
 ---
 
+## 2026-09-20 — a pathspec commit ran its own gate under git's TEMPORARY index
+
+What broke:        `git commit -- <path>` builds a TEMPORARY index and exports its path to the
+                   pre-commit hook as `GIT_INDEX_FILE` (`<repo>/.git/next-index-XXXXXX.lock`).
+                   Everything a hook starts inherits it, so any `git` command the gate runs
+                   inside ANOTHER repository read this repo's index entries against that
+                   repository's object store and died on the first blob it did not have:
+                   `fatal: unable to read 691e2bd…`, surfacing as
+                   `CMake Error at …/jsom-populate-gitupdate.cmake:186 (message): Failed to get
+                   the status` — a pathspec commit failing its OWN gate at `build`, naming a
+                   dependency update, on a tree that builds fine. It is worse than one failed
+                   command: the dependency's checkout is left HOLLOW (no `.git/index`, empty
+                   worktree, `git ls-files` 0, `git status` reporting its whole tree as staged
+                   deletions) for the life of that build directory. Measured on Computo (card
+                   `t_9541aa62`, which is also where the `env -u`-per-configure alternative was
+                   measured and rejected); the same hole was in all three templates and in the
+                   C++ forks, which is card `t_0a9a0018`.
+                   The payload is not exotic: cmake's FetchContent update step in a `build`
+                   stage is the measured one, and a `pip install git+https://…` requirement, a
+                   probe that clones into a temp dir, or a repo's own `kitprobes` script reaches
+                   it the same way.
+Check added:       `templates/cpp/ci.sh`, `templates/deno/gate.sh`, `templates/python/gate.sh`:
+                   `unset GIT_INDEX_FILE` in the prologue, beside `export NO_COLOR=1`, with the
+                   mechanism and the measurement in the comment above it. Probed by
+                   `probes/git-index-file.sh` (5 checks): it runs the gate's OWN environment
+                   block inside a real `git commit -- <path>` in a throwaway repo whose hook
+                   then runs a `git status` in a DIFFERENT repo — the block must make that
+                   commit pass, and the same bytes with the unset line removed must be refused.
+                   That pair is what gives the probe teeth, and it is why the probe is not the
+                   "run `tree`/`format` both ways and diff the output" shape the Computo card
+                   suggested: measured, those stages' outputs are byte-identical with the
+                   inherited temporary index and with the real one, so that check passes
+                   vacuously. `tools/kit-probes.sh` now runs a probe once per `# guards:` line,
+                   so all three templates are held to it.
+                   The hooks are deliberately NOT changed, and that is measured, not assumed:
+                   the pre-commit hook's only git call (`git rev-parse --show-toplevel`) reads
+                   its own repo and the gate it execs unsets the variable, and the pre-push
+                   hook never inherits a temporary index at all — `git push` does not create
+                   one (measured: pre-commit sees `.git/next-index-…lock` on a pathspec commit
+                   and `.git/index` on a staged one, pre-push sees it unset). One definition,
+                   three callers: the prologue is the one place that also covers the by-hand
+                   run the card's own reproduction uses.
+Why it must stay:  The variable is git's bookkeeping for one commit, not this repository, and
+                   every process the gate starts inherits it. Without the unset, the
+                   shared-tree habit this kit recommends (`git commit <path>` so two agents can
+                   work in one checkout) fails the gate that is supposed to protect it, with a
+                   message about somebody else's dependency — and the dependency's build
+                   directory is left broken behind it. `env -u` in front of the commands that
+                   were noticed is not a substitute: it covers the instance and leaves the
+                   class.
+
 ## 2026-09-20 — a green C++ gate certified a configuration the pipeline never built
 
 What broke:        Computo's GitHub Pages deploy was red from 2026-09-08 and its `./build.sh` had

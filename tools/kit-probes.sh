@@ -8,8 +8,10 @@
 #
 # Every probe is a standalone script that takes a gate script (and a repo root) and exits
 # non-zero when one kit fix is missing from that copy. The probe's own header carries the
-# binding: a `# guards: <kit path>` line names the kit file the probe is about, so this
-# runner never has to guess and a probe can never be pointed at the wrong file.
+# binding: `# guards: <kit path>` names the kit file the probe is about, so this runner
+# never has to guess and a probe can never be pointed at the wrong file. A fix that lands
+# in several templates names them ALL (one line per file) and the runner runs the probe
+# once per guarded file — so the counts below are runs, not probes.
 #
 # The runner is the KIT's. A repo does not copy it: a repo's own gate runs the probes it
 # carries straight out of tools/kit-probes/ (the `kitprobes` stage in each template).
@@ -40,29 +42,34 @@ verified=0
 failed=0
 for probe in "${probes[@]}"; do
     name=$(basename "$probe")
-    guards=$(sed -n 's/^# guards: *//p' "$probe" | head -1)
-    if [ -z "$guards" ]; then
+    guards=()
+    while IFS= read -r guards_line; do
+        [ -n "$guards_line" ] && guards+=("$guards_line")
+    done < <(sed -n 's/^# guards: *//p' "$probe")
+    if [ ${#guards[@]} -eq 0 ]; then
         printf '  FAIL %s — no "# guards: <kit path>" line, so nothing names what it checks\n' "$name"
         failed=$((failed + 1))
         continue
     fi
-    target=$KIT_ROOT/$guards
-    if [ ! -f "$target" ]; then
-        printf '  FAIL %s — guards %s, which does not exist in the kit\n' "$name" "$guards"
-        failed=$((failed + 1))
-        continue
-    fi
-    if [ "$list_only" = "1" ]; then
-        printf '  %-24s -> %s\n' "$name" "$guards"
-        continue
-    fi
-    printf '\n--- %s -> %s\n' "$name" "$guards"
-    if bash "$probe" "$target" "$KIT_ROOT"; then
-        verified=$((verified + 1))
-    else
-        printf '  (probe exited non-zero)\n'
-        failed=$((failed + 1))
-    fi
+    for guarded in "${guards[@]}"; do
+        target=$KIT_ROOT/$guarded
+        if [ ! -f "$target" ]; then
+            printf '  FAIL %s — guards %s, which does not exist in the kit\n' "$name" "$guarded"
+            failed=$((failed + 1))
+            continue
+        fi
+        if [ "$list_only" = "1" ]; then
+            printf '  %-24s -> %s\n' "$name" "$guarded"
+            continue
+        fi
+        printf '\n--- %s -> %s\n' "$name" "$guarded"
+        if bash "$probe" "$target" "$KIT_ROOT"; then
+            verified=$((verified + 1))
+        else
+            printf '  (probe exited non-zero)\n'
+            failed=$((failed + 1))
+        fi
+    done
 done
 
 if [ "$list_only" = "1" ]; then

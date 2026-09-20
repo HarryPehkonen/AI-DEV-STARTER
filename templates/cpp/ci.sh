@@ -43,6 +43,28 @@ cd "$REPO_ROOT" || exit 1
 # escapes defeat the greps. The escapes this script prints itself are for the human.
 export NO_COLOR=1
 
+# git exports GIT_INDEX_FILE to a hook when the commit is made with a PATHSPEC
+# (`git commit -- <path>`): it names git's TEMPORARY index for that one commit, not this
+# repository's index. Every process a hook starts inherits it, and any `git` command the
+# gate runs inside ANOTHER repository — cmake's FetchContent update step in a `build`
+# stage, a `pip install git+https://…` requirement, a probe that clones into a temp dir, a
+# repo's own kitprobes script — then reads THIS repo's index entries against that
+# repository's object store and dies on the first blob it does not have:
+#     fatal: unable to read 691e2bdafaf312970644391de042d38c2c5972d8
+#     CMake Error at .../jsom-populate-gitupdate.cmake:186 (message): Failed to get the status
+# — so a pathspec commit fails its OWN gate at `build`, naming a dependency update, on a
+# tree that builds fine (measured 2026-09-20 on Computo, cards t_9541aa62 -> t_0a9a0018).
+#
+# Unset it once, here, rather than `env -u` in front of each command that shells out to
+# git: the variable reaches everything the gate starts, so a per-invocation fix would
+# cover the instance and leave the class. It is also the safe place, not merely the cheap
+# one — measured on a real pathspec commit in a throwaway clone, with the gate's own
+# stages run both ways: every input the `tree` and `format` stages read is identical and
+# their output is byte-identical, and the two views that do differ (`git diff --cached
+# HEAD`, the staged-vs-unstaged letter) are read by no stage. `probes/git-index-file.sh`
+# holds every copy to this by running the block below inside a real pathspec commit.
+unset GIT_INDEX_FILE
+
 # ---------------------------------------------------------------- defaults + config
 CI_JOBS=${CI_JOBS:-$(nproc 2>/dev/null || echo 4)}
 CI_BUILD_DIR=${CI_BUILD_DIR:-build}

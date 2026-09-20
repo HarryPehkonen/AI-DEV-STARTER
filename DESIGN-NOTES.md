@@ -265,7 +265,10 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   Shipped instead: `probes/<slug>.sh` — one small script per kit fix, taking a gate script
   and holding it to that fix's contract by name and by behaviour, offline, no kit checkout,
   no build, under a second (reference: `probes/tidy-baseline.sh`, 7 checks) — plus
-  `tools/kit-probes.sh`, the kit's own run of every probe against the file it guards, and a
+  `tools/kit-probes.sh`, the kit's own run of every probe against the file(s) it guards (a
+  probe whose fix lands in several templates names each in its own `# guards:` line, and the
+  runner runs it once per file, so `templates/{cpp/ci.sh,deno/gate.sh,python/gate.sh}` are all
+  held to the 2026-09-20 `GIT_INDEX_FILE` fix by one probe), and a
   `kitprobes` stage in all three template gates that runs each script in the repo's
   `tools/kit-probes/` against *that* gate. The rule it enforces: **a fix that must propagate
   ships a probe.** Measured: the kit verifies 7/7; the four repos at HEAD verify with **no

@@ -68,6 +68,21 @@ export PIP_DISABLE_PIP_VERSION_CHECK=1
 export UV_NO_PROGRESS=1
 export PYTHONDONTWRITEBYTECODE=1
 
+# git exports GIT_INDEX_FILE to a hook when the commit is made with a PATHSPEC
+# (`git commit -- <path>`): it names git's TEMPORARY index for that one commit, not this
+# repository's index, and every process the gate starts inherits it. This gate's own git
+# calls all read THIS repo, so they survive it — but the tools it runs do not: a
+# `requirements.txt` line like `git+https://…` makes pip clone into a temp dir, and that
+# clone's own git commands then read an index belonging to the wrong object store and die
+# on the first blob they do not have (`fatal: unable to read
+# 691e2bdafaf312970644391de042d38c2c5972d8` — measured on the C++ side of this kit, where a
+# pathspec commit failed its own gate; cards t_9541aa62 -> t_0a9a0018). It is git's
+# bookkeeping for one commit, not this repository, so unset it once here rather than
+# `env -u` per command: the prologue is the one place every caller (by hand, both hooks,
+# the nightly clean checkout) passes through. `probes/git-index-file.sh` holds every copy
+# to this.
+unset GIT_INDEX_FILE
+
 PYPROJECT=${PYPROJECT:-pyproject.toml}
 REQUIREMENTS=${REQUIREMENTS:-requirements.txt}
 STRICT_TOOLS=${STRICT_TOOLS:-0}   # 1 = a missing tool FAILS the run instead of SKIPping

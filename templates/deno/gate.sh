@@ -35,6 +35,20 @@ export PATH="$HOME/.deno/bin:$PATH"
 export NO_COLOR=1
 export DENO_NO_UPDATE_CHECK=1
 
+# git exports GIT_INDEX_FILE to a hook when the commit is made with a PATHSPEC
+# (`git commit -- <path>`): it names git's TEMPORARY index for that one commit, not this
+# repository's index, and every process the gate starts inherits it. This gate's own git
+# calls all read THIS repo, so they survive it — but the tools it runs (a `deno` command's
+# subprocess, a repo's own kitprobes script) can run git in another repository, where an
+# index from the wrong object store is fatal on the first blob that repository does not
+# have (`fatal: unable to read 691e2bdafaf312970644391de042d38c2c5972d8` — measured on the
+# C++ side of this kit, where a pathspec commit failed its own gate; cards t_9541aa62 ->
+# t_0a9a0018). It is git's bookkeeping for one commit, not this repository, so unset it
+# once here rather than `env -u` per command: the prologue is the one place every caller
+# (by hand, both hooks, the nightly clean checkout) passes through.
+# `probes/git-index-file.sh` holds every copy to this.
+unset GIT_INDEX_FILE
+
 # The artifact-identity pair. Point these at your project's copies of the one number,
 # or delete the artifact_identity stage and say why in INCIDENTS.md.
 VERSION_FILE=${VERSION_FILE:-public/version.js}
