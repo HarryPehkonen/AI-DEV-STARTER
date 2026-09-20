@@ -14,6 +14,33 @@ arbitrary checks get deleted. The rationale is the load-bearing part.
 
 ---
 
+## 2026-09-20 — the C++ gate printed GATE PASSED after executing one stage of ten
+
+What broke:        A `git push` on Computo ran the full tier and printed `all 10 stage(s)
+                   passed in 0s` while the only stage that really ran was `tree`. `format` died
+                   with `tools/ci.sh: line 357: sources: unbound variable` — `set -u` plus
+                   `local -a sources` declared and never filled — and bash unwound out of the
+                   stage function AND out of the dispatch loop. The run fell through to the end,
+                   the end prints the verdict unconditionally, the summary listed one stage, and
+                   the exit status was 0, so the pre-push hook let the push through. The trigger
+                   is common, not exotic: the format stage takes that branch whenever the touched
+                   set holds no C++ file — a docs, script or record change, which is exactly the
+                   shape of a kit sync. Found while porting the probe stage (card `t_0cc793fb`);
+                   the hole predates that port, and the same `local -a sources` shape was in
+                   every C++ copy and in this template.
+Check added:       `templates/cpp/ci.sh`: every `local -a <name>` is declared `=()` (an empty
+                   array is a value; unset is not), the dispatch loop fails a stage that returns
+                   non-zero without reporting a verdict, and after the loop the verdict is derived
+                   from what RAN — a requested stage that did not run fails the run with
+                   `FAILED: N of M stage(s) did not run`. Probed by `probes/gate-stage-guards.sh`,
+                   which every C++ copy carries and its own gate runs.
+Why it must stay:  Contract rule 1 is "a stage that did not run must never read as green". The
+                   `BLOCK` lines enforce it for stages skipped after a *reported* failure; these
+                   guards are the same rule for a stage that dies without reporting at all.
+                   Deleting them restores a green verdict over an unrun gate — the failure mode
+                   the kit exists to remove, and the one that let a broken tidy baseline live in
+                   four repos.
+
 ## 2026-09-20 — the python gate's tests stage could not import a src-layout tree
 
 What broke:        An unpackaged repo (`requirements.txt`, no `pyproject.toml`) with the

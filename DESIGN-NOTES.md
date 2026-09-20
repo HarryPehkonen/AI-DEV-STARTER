@@ -186,6 +186,16 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   `NOTRUN` lines, and the shipped word is `BLOCK`; either name means the same thing, and the
   point is the same: once the build fails the later stages have nothing trustworthy to say, and
   silence reads as success. (Pass-1 advice; adopted, see `out-cpp-fail-format.txt`.)
+  **Strengthened 2026-09-20** (card `t_0cc793fb`, `INCIDENTS.md`): `BLOCK` lines cover the
+  stages behind a *reported* failure, and they do not cover a stage that dies without reporting
+  anything. Measured: `set -u` plus `local -a sources` (declared, never filled) made
+  `"${#sources[@]}"` an unbound-variable error on bash 5.2, and bash unwound out of
+  `stage_format` *and* out of the dispatch loop — so the run fell through to the end and printed
+  `all 10 stage(s) passed in 0s / GATE PASSED`, exit status 0, after executing one stage; a
+  `git push` went through on it. The template now (a) declares such arrays `=()`, (b) fails a
+  stage that returns non-zero without reporting a verdict, and (c) derives the verdict from the
+  stages that RAN (`FAILED: N of M stage(s) did not run`), which is the guard for any future
+  unwind whatever its cause. Probed by `probes/gate-stage-guards.sh`.
 - **D7 — Skip vs fail.** The runtime/compiler/test-runner fails when absent; cosmetic tools
   skip loudly, with `--strict-tools` / `STRICT_TOOLS=1` making every missing tool a failure.
 - **D8 — Hooks are armed by the user, never self-armed.** Nothing in this kit mutates git

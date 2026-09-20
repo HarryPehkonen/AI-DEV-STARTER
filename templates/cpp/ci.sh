@@ -302,7 +302,7 @@ stage_format() {
         touched="$(git show --name-only --pretty=format: HEAD | sed '/^$/d')"
         printf '    (level with origin/main: checking the last commit instead)\n'
     fi
-    local -a sources
+    local -a sources=()
     while IFS= read -r f; do
         [ -n "$f" ] && [ -f "$f" ] && sources+=("$f")
     done < <(printf '%s\n' "$touched" | grep -E '\.(cpp|cc|cxx|hpp|hh|h)$')
@@ -511,7 +511,7 @@ stage_tidy() {
     if [ ! -f "$CI_BUILD_DIR/compile_commands.json" ]; then
         ci_fail tidy "no $CI_BUILD_DIR/compile_commands.json — configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON (the build stage does) before tidy can say anything"
     fi
-    local -a sources
+    local -a sources=()
     mapfile -t sources < <(ci_tidy_sources)
     if [ "${#sources[@]}" -eq 0 ]; then
         ci_fail tidy "no sources matched $CI_SOURCE_GLOBS — tidy would analyse nothing and still pass"
@@ -671,10 +671,34 @@ for stage in "${STAGES_REQUESTED[@]}"; do
         printf 'unknown stage: %s (try --list)\n' "$stage" >&2
         exit 2
     fi
-    "stage_$stage"
+    # A stage that returns non-zero without reporting a verdict is not a pass, and a stage that
+    # dies from a shell error cannot report anything at all — so neither is left to the summary.
+    if ! "stage_$stage"; then
+        FAILED_STAGE="$stage"
+        summary
+        printf 'FAILED: %s exited non-zero without reporting a verdict\n' "$stage" >&2
+        printf '\nGATE FAILED\n' >&2
+        exit 1
+    fi
     RAN_STAGES+=("$stage")
 done
 ELAPSED=$(( $(date +%s) - START ))
+
+# The verdict comes from what RAN, not from what was requested. A shell error can unwind out of
+# the loop above without either guard seeing it — measured 2026-09-20 on Computo's fork: `set -u`
+# plus `local -a sources` (declared, never filled) made "${#sources[@]}" an unbound-variable
+# error, which aborted stage_format and the dispatch loop together, and the run then printed
+# "all 10 stage(s) passed ... GATE PASSED" after executing one stage of ten (INCIDENTS.md). This
+# comparison is the backstop for that whole class: if any requested stage did not run, the run
+# fails.
+if [ "${#RAN_STAGES[@]}" -ne "${#STAGES_REQUESTED[@]}" ]; then
+    summary
+    printf 'FAILED: %s of %s stage(s) did not run — the run ended early\n' \
+        "$(( ${#STAGES_REQUESTED[@]} - ${#RAN_STAGES[@]} ))" "${#STAGES_REQUESTED[@]}" >&2
+    printf '  ran: %s\n' "${RAN_STAGES[*]:-none}" >&2
+    printf '\nGATE FAILED\n' >&2
+    exit 1
+fi
 
 summary
 printf '\nall %s stage(s) passed in %ss\nGATE PASSED\n' "${#STAGES_REQUESTED[@]}" "$ELAPSED"
