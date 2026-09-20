@@ -231,7 +231,20 @@ decision lives:
      that has already landed.
    - Measured pairs, artifact commit first: jsonTools `9a60fda` + `0f51c9b`; JSOM `f24ac92` +
      `8694dbb`; Permuto `8541d27` + `9d7fb15`; Computo `a3379f5` + `c60d7fb` (`git log --oneline -2`
-     in any of the four shows the pair, and `adopted_in` points at the first).
+     in any of the four shows the pair — the second is the direct child of the first, and
+     `adopted_in` names the first).
+   - `adopted_in` is stored short — all four records use 7 hex — and unlike `from_revision` it is not
+     required to be 40-hex; what it must do is **resolve in this repo** (`git rev-parse
+     <adopted_in>^{commit}`) and name the commit that actually landed the fix. Measured across the
+     four records: all twelve entries name a commit that touches the probe file. One artifact commit
+     can land two fixes — JSOM's `a7aa681` carries `tidy-baseline` **and** `gate-stage-guards`, and
+     both entries name it.
+   - The two older entries on each record are the backfilled case, and they are why the rule is worth
+     writing down: `adopted_fixes` did not exist when `tidy-baseline` and `gate-stage-guards` landed,
+     so those entries were added afterwards by one record-only commit per repo (`record: what this
+     copy has and has not taken from the kit, and what "behind" means`, card `t_fb62d8fa`) naming the
+     earlier artifact commit. Same two statements, arrived out of order — so do not "fix" them into a
+     pair, and do not assume the entry-adding commit is always the child of `adopted_in`.
 2. **Decline it** — add a `declined_fixes` entry with the reason, and with the measurement when there
    is one: *"the kit's probe fails against this gate: 0 ok, 7 failed"* is a fact, while *"not needed
    here"* is an opinion that the next reader has to re-derive.
