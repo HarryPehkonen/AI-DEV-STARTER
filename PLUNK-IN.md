@@ -188,10 +188,6 @@ that already exists in this repo, and set it in one of three ways:
 | Python, unpackaged (`requirements.txt`) | the tracked `VERSION` file ↔ `__version__` the code reports | `IDENTITY_FILE=` (default `VERSION`), and `IDENTITY_IMPORT_NAME=` when the repo has more than one package |
 | C++ | `project(VERSION)` ↔ the CMake-generated header | `CI_VERSION_HEADER=...` in `.ci.env` (a tracked header works too) |
 
-**Choose the first number deliberately.** A repo that has never been versioned starts at
-`0.1.0`, not `1.0.0`: the number is read as a promise to consumers, and a repo being wired for
-the first time has none to promise anything to. The two copies move together in one edit.
-
 A requirements-only repo has no packaging metadata to hold the number, so its declared copy
 is a tracked file holding the version on a line of its own. The gate **fails** when that file
 is missing rather than skipping the check: create it (or point `IDENTITY_FILE` at the file
