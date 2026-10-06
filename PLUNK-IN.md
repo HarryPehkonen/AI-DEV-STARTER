@@ -135,7 +135,7 @@ Two configurations, two knobs: every stage except `release` builds `CI_BUILD_TYP
 One configuration is not enough — a `warning:` that exists only under `-O2`/`-O3`, or code
 that only misbehaves once `NDEBUG` removes the asserts, is invisible to a gate that never
 configures that way, and the repo's own pipeline is the one that decides. Both build dirs
-(`build*/`) must be in `.gitignore` (step 3).
+(`build*`) must be in `.gitignore` (step 3).
 
 C++ is the one language with two tiers, because a full run is minutes and a commit
 cannot afford minutes:
@@ -156,9 +156,14 @@ files, so these must be ignored **before** the first run:
 cat >> .gitignore <<'EOF'
 
 # the gate's own footprint
-.ci-logs/
-build/
-build-*/
+#
+# No trailing slashes, and that is the whole point: `tree` runs before the stages that
+# create these paths, and `git check-ignore` cannot match a directory-only pattern against
+# a path that does not exist yet — so `build/` reads NOT ignored on a fresh clone's first
+# run and passes on the second. (The kit guards this with probes/gitignore-footprint.sh.)
+.ci-logs
+build
+build-*
 .ci.env
 
 # python
@@ -319,7 +324,8 @@ tools/ci.sh kitprobes                                  # or: scripts/gate.sh
 
 `tools/kit-probes/` **is the list of fixes your copy claims to carry**, and the `kitprobes`
 stage runs every script in it against the gate that invoked it — offline, no kit checkout, no
-network, no build, under a second. A copy with no
+network, no build, under a second. (The index of the fixes themselves — what each one changes, the
+symptom without it, and the kit commit it came from — is `docs/KIT-FIXES.md`.) A copy with no
 `tools/kit-probes/` SKIPs the stage on
 purpose: it means "carries no probe yet", which is not the same statement as "is behind".
 Record each probe file in `.ai-dev-starter.json` like any other copied artifact, so the claim

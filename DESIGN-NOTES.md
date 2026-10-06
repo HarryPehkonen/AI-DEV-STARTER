@@ -2,7 +2,7 @@
 
 **What is authoritative here.** The shipped templates plus this file. Every decision below
 records the panel advice it came from and whether it was **adopted**, **adapted**, or
-**not adopted** (with the reason). Downstream cards should read `D1`–`D14` and
+**not adopted** (with the reason). Downstream cards should read `D1`–`D15` and
 "Known gaps" as the spec; the panel's raw answers are in the traces named below.
 
 ---
@@ -157,7 +157,7 @@ Recorded because these were the live judgement calls, and the shipped answer is 
 
 ---
 
-## 5. Decisions taken (D1–D14), as shipped
+## 5. Decisions taken (D1–D15), as shipped
 
 - **D1 — No files beyond the decided layout.** Only `templates/cpp/.ci.env.example` earns an
   example file; the deno and python gates have no knobs worth configuring.
@@ -317,6 +317,39 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   hand run (pushes were unaffected only because `templates/hooks/pre-push` spells its own list
   out). Same family as everything else this kit collects: a documented value that quietly
   switches a check off.
+
+- **D15 — The gate-footprint recipe is SLASH-FREE: `tree` asks the question before the paths
+  exist.** (2026-10-06, found in the field by the `fsmTable` Stage A run — a repo wired from this
+  kit whose gate was first run before it had built anything.) The shipped recipe listed
+  `.ci-logs/`, `build/`, `build-*/`: correct-looking, and wrong for the one stage that reads it.
+  `tree` audits `$CI_BUILD_DIR $CI_ASAN_BUILD_DIR $CI_TSAN_BUILD_DIR $CI_RELEASE_BUILD_DIR
+  $CI_LOG_DIR .ci.env`, and it is stage 1 of 12 — so on a fresh clone it asks the question before
+  any stage has created those paths, and `git check-ignore` cannot match a DIRECTORY-ONLY pattern
+  against a path that does not exist. Measured on git 2.47.3, same path, directory absent:
+  `build/` NOT IGNORED, `build` ignored. A fresh clone's first run therefore stopped at `tree`
+  with *"the next run would fail on its own log files"* — naming a problem the reader cannot find
+  in their `.gitignore`, because the rule IS there, with a trailing slash — and the second run
+  passed. That head start is why it lasted this long: every repo met the check after it already
+  had a build directory.
+  Blast radius, measured: all five C++ repos wired from this kit (jsonTools, JSOM, Computo,
+  Permuto, UnicodeChecker) carry the slashed form, and a throwaway clone of each reads
+  `NOT ignored` for `build`, `build-asan`, `build-tsan` and `build-release` before anything is
+  built — four of the six, the other two being fine for reasons of their own (`.ci.env` carries no
+  slash; `.ci-logs` is created by `ci.sh:261`, ahead of the stage loop). jsonTools' comment on the
+  rule — *"the pattern (not just `build/`) covers the gate's own build-asan/ as well as any other
+  CMake directory name"* — is exactly the reasoning that misses the case: the pattern does cover
+  those directories, once something has made them.
+  Shipped instead: slash-free entries in `PLUNK-IN.md` step 3 and in this kit's own `.gitignore`,
+  each carrying the reason beside it, plus `probes/gitignore-footprint.sh`. The probe extracts the
+  recipe from the step-3 fenced block (when a repo's `kitprobes` stage passes its gate script
+  instead, the probe reads that repo's own `.gitignore` — the fix propagates as a check on each
+  copy, which is D13's rule), applies it in a scratch repo with none of the six paths on disk, and
+  requires all six to come back ignored. The pre-fix recipe is run as a NEGATIVE CONTROL and must
+  fail on 5 of 6; if it passed, the probe would be asserting nothing.
+  Rejected: fixing only this kit's own `.gitignore` — the recipe in PLUNK-IN is what each new repo
+  copies, so the defect would ship again with the next adoption. Also rejected: touching
+  `.release/` in PLUNK-IN step 10 — `release.sh`'s notes directory is not in the `tree` audit
+  list, and a slash there is harmless because that directory exists by the time anyone looks.
 
 ---
 

@@ -258,7 +258,7 @@ decision lives:
 
 A probe is a small script in the kit that takes a gate script path, and exits non-zero when the fix is
 absent — checked by name and by behaviour, not by hash or by diff. The reference implementation is
-`probe-tidy-baseline-fix.sh` (the 2026-09-20 clang-tidy baseline fix): it asserts the normaliser exists,
+`probes/tidy-baseline.sh` (the 2026-09-20 clang-tidy baseline fix): it asserts the normaliser exists,
 feeds it one synthetic finding and checks the repo root and `:line:col` are stripped, asserts both sides
 of the comparison go through it, and asserts `--write-tidy-baseline` shares the same function.
 
@@ -274,9 +274,10 @@ that is still present is not caught — that costs a real build and a real run, 
 did by hand four times. And a probe must be written per fix, so the rule is a discipline, not a free
 guarantee.
 
-**Shipped probes (2026-09-20).** `probes/tidy-baseline.sh` (the 7-check reference implementation above)
-and `probes/gate-stage-guards.sh` (3 checks). The second is the rule paying for itself: while porting the
-first into Computo's fork, that repo's gate printed `all 10 stage(s) passed in 0s / GATE PASSED`, exit
+**Shipped probes.** The index of every fix and its probe — what it changes, the symptom without it, and
+the kit commit that added it — is `docs/KIT-FIXES.md`; the reasoning for the fixes worth reading in full
+is below, and each probe's own header carries its limits. `gate-stage-guards` is the rule paying for
+itself: while porting `tidy-baseline` into Computo's fork, that repo's gate printed `all 10 stage(s) passed in 0s / GATE PASSED`, exit
 status 0, after executing **one** stage of ten — `set -u` plus `local -a sources` (declared, never
 filled) made `"${#sources[@]}"` an unbound-variable error, and bash unwound out of the stage *and* out of
 the dispatch loop. A `git push` went through on that verdict. The hole predates the port and lived in every

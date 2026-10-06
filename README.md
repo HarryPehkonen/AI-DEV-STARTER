@@ -55,7 +55,7 @@ how a starter kit becomes a framework nobody uses.
 | `templates/cpp/version.hpp.in` | the generated version header — one home for the number, and the CMake wiring that keeps the header and the `project()` line from drifting |
 | `templates/hooks/pre-commit` | fast tier — runs on `git commit` |
 | `templates/hooks/pre-push` | full tier — runs on `git push` |
-| `probes/<slug>.sh` | one per kit fix that must propagate: takes a gate script and exits non-zero when that fix is missing from it |
+| `probes/<slug>.sh` | one per kit fix that must propagate: takes a gate script and exits non-zero when that fix is missing from it. The fixes, and what a repo does about each: `docs/KIT-FIXES.md` |
 | `tools/kit-probes.sh` | the kit's own run of every probe, against the kit file(s) it guards — one run per `# guards:` line (`--list` shows what each one checks) |
 
 Both hook files dispatch to whatever gate the repo has (`tools/ci.sh` for C++,

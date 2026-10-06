@@ -2,12 +2,21 @@
 # so this repo is itself an instance of the kit it ships. It is load-bearing, not
 # cosmetic: the C++ gate's `tree` stage fails when the gate's own output shows up as an
 # untracked file (`git ls-files --others --exclude-standard`), and the stage creates
-# .ci-logs/ and build*/ before it looks.
+# .ci-logs and the build dirs before it looks.
 
 # the gate's own footprint
-.ci-logs/
-build/
-build-*/
+#
+# NO TRAILING SLASHES, deliberately. `tree` runs FIRST, so on a fresh clone it asks whether
+# these paths are ignored before any stage has created them — and `git check-ignore` cannot
+# match a directory-only pattern (`.ci-logs/`, `build/`) against a path that does not exist.
+# Measured on git 2.47.3, same path, directory absent: `build/` NOT IGNORED, `build` ignored.
+# With the slash, the first run fails the tree stage for a reason its own message cannot
+# explain ("the next run would fail on its own log files" — with the rule sitting right here
+# in this file) and the second run passes. The fix is guarded by
+# probes/gitignore-footprint.sh.
+.ci-logs
+build
+build-*
 .ci.env
 
 # python
