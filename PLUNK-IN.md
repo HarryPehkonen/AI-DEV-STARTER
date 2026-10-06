@@ -199,7 +199,7 @@ knows it was a decision and not an oversight.
 
 ---
 
-## Step 5 — the two documents that make the rest stick
+## Step 5 — the three documents that make the rest stick
 
 ```bash
 cp "$KIT/templates/CLAUDE.md.template" CLAUDE.md   # fill in every <placeholder>
@@ -209,6 +209,20 @@ cp "$KIT/INCIDENTS.md" .                           # keep the example, add your 
 `CLAUDE.md` must name the real commands (the gate among them) and start a **gotchas**
 list. Its first entry should be the thing that has already bitten this repo — you know
 what it is.
+
+The third document is `REVIEW.md`, and it is the one that changes behaviour:
+
+```bash
+cp "$KIT/templates/REVIEW.md.template" REVIEW.md   # fill in the gate command
+```
+
+Every diff gets reviewed — by a human, or by an assistant you hand it to — and `REVIEW.md` is
+what that reviewer reads first: run the gate and report it rather than repeat it; report few
+findings and stand behind each one; read the call sites before claiming anything that is not
+local; and reproduce a finding before relaying it. It also states what those clauses are
+worth (one diff, two arms, one run each — a signal, not a proof), so the next person can
+weigh them instead of trusting them. Hand the clauses over **in the prompt**, next to the
+diff: a standard that stays in a document is a standard that never changes a review.
 
 ---
 
@@ -305,7 +319,8 @@ tools/ci.sh kitprobes                                  # or: scripts/gate.sh
 
 `tools/kit-probes/` **is the list of fixes your copy claims to carry**, and the `kitprobes`
 stage runs every script in it against the gate that invoked it — offline, no kit checkout, no
-network, no build, under a second. A copy with no `tools/kit-probes/` SKIPs the stage on
+network, no build, under a second. A copy with no
+`tools/kit-probes/` SKIPs the stage on
 purpose: it means "carries no probe yet", which is not the same statement as "is behind".
 Record each probe file in `.ai-dev-starter.json` like any other copied artifact, so the claim
 is auditable (`docs/KIT-REVISION-CONVENTION.md` in this kit, section
@@ -330,6 +345,43 @@ rule is a discipline, not a free guarantee. The kit runs its own probes with
 to a probe or to a template a probe guards.
 
 ---
+
+## Step 10 — the release process (only for a repo that tags releases)
+
+```bash
+mkdir -p tools
+cp "$KIT/templates/cpp/release.sh" tools/release.sh
+chmod +x tools/release.sh
+echo '.release/' >> .gitignore      # the notes are a draft until they are published
+tools/release.sh status
+```
+
+Four commands, in this order:
+
+```bash
+tools/release.sh status             # declared version, newest tag, unreleased commits, advice
+tools/release.sh prepare [--apply]  # propose the next version from the commits since the
+                                    # last tag; --apply writes it to CMakeLists.txt
+tools/release.sh notes [--open]     # draft .release/notes-v<version>.md, table first
+tools/release.sh publish --yes      # tag + push tag + gh release create
+```
+
+The project name is read out of `CMakeLists.txt` (`project(<name> VERSION x.y.z)`), so there
+is nothing to configure — a name in two places drifts, and a name in one place can be
+checked. `publish` refuses unless the tree is clean, HEAD is what `origin/main` has, the tag
+is absent, `gh` is present, **and the compatibility table is no longer a TODO**. That last
+refusal is the point of the whole script: the mechanical parts are inferable from git, but
+how an existing user's code is affected is a judgement, and a generated answer would be a
+confidently wrong one.
+
+The notes lead with that table on purpose — source → behaviour → build/package → removed,
+renamed or newly required → ABI/soname — because the first question a user has about a new
+version is "what happens to me". The version itself has exactly one home, the `project()`
+line; if the repo has no second copy of the number yet, `templates/cpp/version.hpp.in` shows
+the pair the gate's `version` stage expects, with the CMake wiring that keeps them honest.
+
+Repos that never tag a release skip this step: a release process in a repo with no releases
+is a file, not a process.
 
 ## Appendix — what each gate runs
 

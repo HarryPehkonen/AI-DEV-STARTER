@@ -46,10 +46,13 @@ how a starter kit becomes a framework nobody uses.
 | `INCIDENTS.md` | the incident-log convention, the kit's own incidents, and one worked example |
 | `docs/KIT-REVISION-CONVENTION.md` | how a repo records the kit revision it was wired from, and which kit fixes it has adopted or declined since |
 | `templates/CLAUDE.md.template` | the agent contract doc, with the gotchas section pre-shaped |
+| `templates/REVIEW.md.template` | how to review a change here: run the gate instead of repeating it, three clauses on precision and evidence, and an honest note on what they are worth |
 | `templates/deno/gate.sh` | Deno gate: lint → tests → format (touched) → artifact identity |
 | `templates/python/gate.sh` | Python gate: lint → format (touched) → tests → types → a clean environment (a wheel in a fresh venv, or `requirements.txt` + the suite from a fresh venv) → identity |
 | `templates/cpp/ci.sh` | C++ gate, two tiers and eleven stages (copy of the proven one) |
 | `templates/cpp/.ci.env.example` | every knob the C++ gate has, with defaults and why |
+| `templates/cpp/release.sh` | the release process for a C++ repo that tags releases: propose the version, draft the notes, and refuse to publish while the compatibility table is still a placeholder |
+| `templates/cpp/version.hpp.in` | the generated version header — one home for the number, and the CMake wiring that keeps the header and the `project()` line from drifting |
 | `templates/hooks/pre-commit` | fast tier — runs on `git commit` |
 | `templates/hooks/pre-push` | full tier — runs on `git push` |
 | `probes/<slug>.sh` | one per kit fix that must propagate: takes a gate script and exits non-zero when that fix is missing from it |
