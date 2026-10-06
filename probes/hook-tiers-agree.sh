@@ -85,12 +85,23 @@ printf '    script: %s\n    repo:   %s\n' "$S" "$R"
 # ---------------------------------------------------------------- G1: the tiers are declared
 fast=$(sed -n 's/^CI_FAST_STAGES=${CI_FAST_STAGES:-"\(.*\)"}/\1/p' "$S" | head -1)
 full=$(sed -n 's/^CI_FULL_STAGES=${CI_FULL_STAGES:-"\(.*\)"}/\1/p' "$S" | head -1)
+full_from=CI_FULL_STAGES
+# A repo may single-source the full tier as the DEFAULT list instead of naming a CI_FULL_STAGES —
+# JSOM, jsonTools and UnicodeChecker do, and their pre-push passes no stage list at all, which is
+# the same guarantee by a different spelling. What matters is that each tier has ONE definition in
+# the gate; which variable holds it is not the contract. (Reading only CI_FULL_STAGES made this
+# probe report those repos as having no tiers, which was this check's own input set failing, not
+# their gates.)
+if [ -z "${full:-}" ]; then
+    full=$(sed -n 's/^CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"\(.*\)"}/\1/p' "$S" | head -1)
+    full_from=CI_DEFAULT_STAGES
+fi
 if [ -z "${fast:-}" ] || [ -z "${full:-}" ]; then
-    note_fail "the gate does not declare both tiers — expected CI_FAST_STAGES and CI_FULL_STAGES"
+    note_fail "the gate does not declare both tiers — expected CI_FAST_STAGES and a full list (CI_FULL_STAGES or CI_DEFAULT_STAGES)"
     printf '       (fast: %s / full: %s) — with the lists elsewhere, a hook has to repeat them\n' \
         "${fast:-none}" "${full:-none}"
 else
-    check 0 "the gate declares both tiers (fast: $fast | full: $full)"
+    check 0 "the gate declares both tiers (fast: $fast | full: $full — from $full_from)"
 fi
 
 # ---------------------------------------------------------------- G2: the hooks name a tier
