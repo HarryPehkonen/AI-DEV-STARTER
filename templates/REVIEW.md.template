@@ -1,0 +1,87 @@
+# REVIEW.md — how to review a change in this repo
+
+<!--
+This file is for whoever reviews a diff here: a human, or an assistant (Claude Code, Codex,
+OpenCode, a Hermes session). It is short on purpose. The parts that can be mechanised are in
+the gate; this file exists so a reviewer spends its attention on the parts that cannot be.
+
+KEEP THE STANDARDS IN THE PROMPT, NOT IN THIS FILE. Handing a reviewer this document is not
+the same as briefing it: the three clauses below belong in the instructions the reviewer is
+given, next to the diff itself. A standard that stays in a document is a standard that never
+changes a review — the first draft of this one made exactly that mistake.
+-->
+
+## Before you say anything: run what already runs
+
+```bash
+<the gate command, e.g. tools/ci.sh or scripts/gate.sh>   # report the result, don't repeat it
+```
+
+The gate is the deterministic half of the review. It already covers formatting, lint, tests,
+coverage and a clean-checkout build, and it reports everything it finds. Restating any of
+that as review findings buries the things it cannot see: intent, ownership, and whether the
+code says what its author believes it says.
+
+## The three clauses
+
+1. **Precision over recall.** Report the few things you can stand behind, not everything you
+   noticed. One confident, wrong finding costs more trust than five real ones earn — a
+   reviewer who is wrong once is not read the second time.
+2. **Never duplicate the linters.** If `format`, `lint`, `tidy` or `test` can see it, it is
+   not a review finding. Style, dead code and unused parameters are the gate's business.
+3. **Read the code before making a claim that is not local.** A statement about what a
+   function does, who calls it, who owns the data, what is shared, or what is thread-safe is
+   a claim about the whole repository: follow the call sites, read the ownership, check the
+   synchronisation. Run the code when you can. Asserted from the shape of a diff alone, it is
+   a guess wearing a finding's clothes.
+
+## The one habit worth as much as the clauses
+
+**Reproduce a finding before you relay it.** A review is a self-report, and so is a reviewer's
+summary of its own review. When a finding names a line, open that line. When it claims "this
+silently drops the action", write the test that would show it. On the run described below,
+every finding that was reproduced turned out to be real — and **one was worse than
+described**: the report said a misuse raised an error that blamed the wrong transition, and
+the test showed it raised no error at all.
+
+## What this is worth (the evidence, not the promise)
+
+The three clauses were distilled from an open ruleset (see Attribution) and tried on one real
+diff — a C++ library's new back end — with two arms, one run each, same model, isolated from
+each other:
+
+- control, no clauses: **8 findings**
+- treatment, with the clauses: **6 findings**
+- in common: **4**
+
+Both arms found real defects. The treatment's two unique findings were the most serious of the
+whole exercise: two false claims in shipped documentation that the repo's fourteen-stage gate
+had passed — a thread-safety paragraph that read as permission to drive one object from
+several threads, and a README claim about a compile error that does not happen. The clause
+that did the work was **#3, read the code first**; the anti-duplication clause (#2) was never
+exercised, because that diff was already gate-clean.
+
+**One diff, one run per arm: a signal, not a proof.** Add your own evidence as you gather it,
+and delete the claims that do not survive.
+
+## Attribution
+
+The three clauses are adapted from `alibaba/open-code-review` (Apache-2.0). Its published
+positioning is precision-first: 33.90% precision against 7.23% for a general-purpose agent, at
+about one ninth of the tokens, while conceding recall (28.90% against 20.00%). We took the
+clauses and the discipline, not the tool.
+
+## Handing this to another assistant (give it the clauses, not the file)
+
+Paste this with the diff, rather than telling the reviewer to go and read a document:
+
+> Review the change in `<range or branch>`. Run `<gate command>` first and report its result;
+> do not repeat findings it already makes. Then, for the code that changed: report the few
+> things you can stand behind, and end with one sentence naming what you did NOT check. Make
+> no claim about behaviour, callers, ownership or thread-safety that you have not read the
+> code to support — run it if you can. Give each finding as exactly one line:
+> `file:line - what is wrong - why it matters`. Reproduce anything you are unsure of before
+> reporting it as a finding.
+
+That block plus a diff is the whole review brief. Everything above this section is the
+reasoning behind it, and the numbers are how much to trust it.

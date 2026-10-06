@@ -1,0 +1,51 @@
+// <name>/version.hpp.in — configured by CMake into <name>/version.hpp (@ONLY).
+//
+// WHY GENERATED RATHER THAN TYPED. The release number has exactly one home: the
+// `project(<name> VERSION x.y.z)` line in CMakeLists.txt. A second copy typed into a header
+// drifts — one of these libraries sat at 1.0.1 in the file while v1.2.0 had already been
+// tagged from the same branch. The gate's `version` stage compares THIS header with that
+// line, so the pair cannot disagree in silence; tools/release.sh is what edits the line.
+//
+// The numbers are `inline constexpr`, deliberately NOT macros: a macro leaks into every
+// translation unit that includes the header, cannot be scoped, and is what both the C++
+// guidelines and clang-tidy tell you to avoid. `if constexpr (<name>::version_major >= 2)`
+// is the idiom that replaces `#if`.
+//
+// WIRING IT UP — the arrangement below is the one proven in a shipped library, copied from
+// its CMakeLists.txt. The template keeps the `.in` suffix so a glob that installs *.hpp
+// skips it, and the install is explicit because the generated header is not in the tree:
+//
+//   configure_file(
+//       ${CMAKE_CURRENT_SOURCE_DIR}/include/<name>/version.hpp.in
+//       ${CMAKE_CURRENT_BINARY_DIR}/include/<name>/version.hpp
+//       @ONLY
+//   )
+//   target_include_directories(<target> PUBLIC
+//       $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include> $<INSTALL_INTERFACE:include>)
+//   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/include/<name>/version.hpp
+//       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/<name>)
+//
+// Do NOT include this from the umbrella header: that drags a build-tree dependency into
+// every consumer. Point CI_VERSION_HEADER at the generated path so the gate can find it,
+// and add a test that the numbers and the string agree:
+//
+//   const std::string from_numbers = std::to_string(<name>::version_major) + "." +
+//                                    std::to_string(<name>::version_minor) + "." +
+//                                    std::to_string(<name>::version_patch);
+//   EXPECT_EQ(from_numbers, std::string(<name>::version()));
+
+#pragma once
+
+#include <string_view>
+
+namespace <name> {
+
+inline constexpr int version_major = @PROJECT_VERSION_MAJOR@;
+inline constexpr int version_minor = @PROJECT_VERSION_MINOR@;
+inline constexpr int version_patch = @PROJECT_VERSION_PATCH@;
+
+/// @brief The version as "x.y.z", assembled at configure time from the numbers above
+/// @return A view of a string literal, valid for the lifetime of the program
+inline std::string_view version() { return "@PROJECT_VERSION@"; }
+
+}  // namespace <name>
