@@ -447,3 +447,20 @@ cd /neutral/empty/dir && env -u HERMES_KANBAN_TASK -u HERMES_KANBAN_WORKSPACE \
 prompt. The other half of the trap: **the trace is written to the profile home**
 (`~/.hermes/profiles/<profile>/moa-traces/`), and a killed run writes no trace at all —
 let the run finish if the trace is evidence you have to produce.
+  Three things this fix learned about its own probe, measured across the fleet on 2026-10-06 rather
+  than reasoned about, because each one was the check being wrong about what it was looking at.
+  First, the full tier is single-sourced in more than one spelling: JSOM, jsonTools, UnicodeChecker
+  and JSONFuzz all keep ONE definition of it as `CI_DEFAULT_STAGES`, and their `pre-push` passes no
+  stage list at all — the same guarantee by a different spelling. The probe required `CI_FULL_STAGES`
+  by name and reported four repos, 17 failures each, as having no tiers; what was failing was its own
+  input set. It reads `CI_FULL_STAGES` when the gate declares it and `CI_DEFAULT_STAGES` when it does
+  not, and prints which it used. Second, a stage in no tier is not automatically a decoration: JSOM's
+  `--list` prints `(opt-in, not in the default set: coverage )` for a stage its own comment calls
+  informational, and JSOM is right — that is a decision the gate states. The probe reads the
+  declaration and skips the stage; a stage that says nothing about being opt-in still fails. Third,
+  and this is the one that matters downstream: the fix moves a line OTHER TOOLS READ. JSOM's
+  `tools/check_docs.py` learned the stage list by pattern-matching the `CI_DEFAULT_STAGES` assignment,
+  so the indirection broke every doc-table check in that repo while the list itself was unchanged. A
+  consumer of these lists must ask the gate — `--list` prints `default stages:` — instead of knowing
+  the spelling of the line. The kit's own `probes/optimized-stage.sh` was the first instance and was
+  fixed the same way.
