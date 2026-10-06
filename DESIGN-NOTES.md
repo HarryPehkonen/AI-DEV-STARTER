@@ -2,7 +2,7 @@
 
 **What is authoritative here.** The shipped templates plus this file. Every decision below
 records the panel advice it came from and whether it was **adopted**, **adapted**, or
-**not adopted** (with the reason). Downstream cards should read `D1`–`D16` and
+**not adopted** (with the reason). Downstream cards should read `D1`–`D17` and
 "Known gaps" as the spec; the panel's raw answers are in the traces named below.
 
 ---
@@ -157,7 +157,7 @@ Recorded because these were the live judgement calls, and the shipped answer is 
 
 ---
 
-## 5. Decisions taken (D1–D16), as shipped
+## 5. Decisions taken (D1–D17), as shipped
 
 - **D1 — No files beyond the decided layout.** Only `templates/cpp/.ci.env.example` earns an
   example file; the deno and python gates have no knobs worth configuring.
@@ -464,3 +464,19 @@ let the run finish if the trace is evidence you have to produce.
   consumer of these lists must ask the gate — `--list` prints `default stages:` — instead of knowing
   the spelling of the line. The kit's own `probes/optimized-stage.sh` was the first instance and was
   fixed the same way.
+
+- **D17 — The record checker lives in the kit, and a record stops re-writing a number nothing verifies.**
+  (2026-10-06.) The checker every `.ai-dev-starter.json` is verified with existed in exactly one place:
+  a per-task scratch directory (`gate-evidence/t_<card>/`), referenced from the kit's own documentation
+  by absolute path. It was load-bearing and unversioned — the kind of thing a cleanup deletes. It is now
+  `tools/check-kit-record.py`, with `--kit` defaulting to the repo the script lives in (the same
+  directory the old hard-coded default named, minus the absolute path).
+  Alongside it, `files[]` stops recording `kit_sha256`: the field only asserted that the hash written
+  into the record equalled the kit's blob at `revision`, which the checker already establishes live by
+  fetching that blob and comparing bytes with the repo's file. A second copy of one number is what made
+  every `revision` move rewrite every entry — churn that produced three record failures on the day this
+  was written, one of which needed a second reading of what a move means: it is a RE-SYNC, where a
+  verbatim copy must *become* the file at the new revision rather than merely be re-hashed. The checker
+  still verifies the field in records that carry it, so no record had to migrate at once.
+  Not a KIT-FIXES row: nothing was broken, and there is no failure to guard with a probe. What was
+  wrong was where a load-bearing check lived.

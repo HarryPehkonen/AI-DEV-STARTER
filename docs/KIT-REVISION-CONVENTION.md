@@ -104,12 +104,26 @@ Field rules:
   the result of running the kit's probe against this repo's gate, so the line reads "you are actually
   missing X" or "you already have X". Silence is not a claim, and it is no longer a red line either.
 
-### A `revision` move re-reads EVERY `kit_sha256`, not the ones a card names
+### A `revision` move RE-SYNCS every verbatim copy, and re-reads every hash
 
-`kit_sha256` is the kit's `kit_path` **at `revision`** — the checker hashes the blob at the revision
-the record states (`git cat-file blob <revision>:<kit_path>`). So the commit that moves `revision`
-must re-read **every** entry in `files[]`, not only the entries the sync card happens to name: the
-move spans **every kit commit in between**, and any one of them may have touched a recorded path.
+`revision` states the kit commit a repo's copies were taken from, so moving it is not a bookkeeping
+edit: it is the claim "our copies are the kit's files at that revision". Two obligations follow, and
+the first one is not about hashes at all.
+
+- **Every entry recorded `adapted: false` must BE the kit's blob at `revision`** — not merely be
+  re-hashed. Refresh the copy from the new revision first, the hash after. Measured 2026-10-06:
+  JSONFuzz's `tools/kit-probes/optimized-stage.sh` was still the copy taken at `d531a110`, and the
+  checker named the contradiction in one line (`adapted=false and the file is byte-identical to the
+  kit`). A revision move is a re-sync; the hashes follow the files.
+- **Every `repo_sha256` is re-read**, because a move spans **every kit commit in between** and any one
+  of them may have touched a recorded path.
+
+`kit_sha256` is no longer recorded for `files[]` entries (2026-10-06). It asserted only that the hash
+written into the record equalled the kit's blob at `revision` — a fact the checker establishes live, by
+fetching that blob and comparing bytes with the repo's file. Keeping a second copy of one number meant
+every `revision` move rewrote every entry, and that churn produced three record failures on the day it
+was removed, one of which required a second reading of what a move means. The checker still verifies
+the field in a record that carries it, so older records stay valid and nothing had to migrate at once.
 
 Measured, 2026-09-20 (card `t_c1c5ba6c`, Computo). The jump `951608c → f9c3300` covers two kit
 commits, `d531a110` (the `release` stage) and `f9c3300` (the GIT_INDEX_FILE fix), which between
@@ -173,7 +187,7 @@ There is one command, and its verdict changed on 2026-09-20 (card `t_fb62d8fa`) 
 `d531a110` turned all six live records red on a **single** line while every file-level check passed:
 
 ```bash
-python3 /home/harri/hermes-workspace/gate-evidence/t_0cc793fb/check-kit-record.py --repo <dir>
+python3 <path-to-kit>/tools/check-kit-record.py --repo <dir>
 ```
 
 Exit 0 = `VERDICT: RECORD VERIFIED`, 1 = `VERDICT: RECORD BAD`. What it fails on, and what it only
