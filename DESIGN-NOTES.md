@@ -2,7 +2,7 @@
 
 **What is authoritative here.** The shipped templates plus this file. Every decision below
 records the panel advice it came from and whether it was **adopted**, **adapted**, or
-**not adopted** (with the reason). Downstream cards should read `D1`–`D15` and
+**not adopted** (with the reason). Downstream cards should read `D1`–`D16` and
 "Known gaps" as the spec; the panel's raw answers are in the traces named below.
 
 ---
@@ -72,7 +72,7 @@ to FAIL. Deno: env → lint → tests → format (touched) → identity. Python:
 installed smoke, all in `mktemp -d`, never into the repo tree. C++: `build tests` for
 pre-commit, `--require-clean tree format build tests version asan tsan tidy pristine` for
 pre-push (**the shipped set has grown twice since this advice — `kitprobes`, D13, and
-`release`, D14; the live lists are the tier table in `PLUNK-IN.md` step 2 and the `ci.sh`
+`release`, D14; the live lists are `CI_FAST_STAGES`/`CI_FULL_STAGES` in the `ci.sh`
 header, and `tools/ci.sh --list` derives them from the script**); **drop**
 `wire`/`fuzz`/`std`/`conform`/`cli`/`coverage` from the shipped default
 set as project-shaped; **keep** `version`, "else the decided cpp artifact-identity
@@ -157,7 +157,7 @@ Recorded because these were the live judgement calls, and the shipped answer is 
 
 ---
 
-## 5. Decisions taken (D1–D15), as shipped
+## 5. Decisions taken (D1–D16), as shipped
 
 - **D1 — No files beyond the decided layout.** Only `templates/cpp/.ci.env.example` earns an
   example file; the deno and python gates have no knobs worth configuring.
@@ -167,7 +167,9 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   stage count is deliberately not repeated here: `tools/ci.sh --list` derives it from the
   defined stage functions, and the two places a reader needs the list are the tier table in
   `PLUNK-IN.md` step 2 and the `ci.sh` header. (Counts written into prose went stale twice —
-  `kitprobes` (D13) and `release` (D14) each added a stage without this line noticing.)
+  `kitprobes` (D13) and `release` (D14) each added a stage without this line noticing. D16 removes
+  the class rather than the instance: the hooks name a tier, and a probe fails the build when they
+  do not.)
 - **D3 — The artifact-identity stage replaces jsonTools' `wire` stage.** `wire` is a
   multi-binary project's problem; the portable equivalent is "two copies of one number must
   agree", exactly one per language, documented in `PLUNK-IN.md` step 4.
@@ -354,6 +356,37 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   copies, so the defect would ship again with the next adoption. Also rejected: touching
   `.release/` in PLUNK-IN step 10 — `release.sh`'s notes directory is not in the `tree` audit
   list, and a slash there is harmless because that directory exists by the time anyone looks.
+
+- **D16 — The hook tiers are the gate's, and the gate and its docs are checked against each other.**
+  (2026-10-06, FSMTable + FSMgine.) D13 put a probe behind every propagating fix, and D14/D15 each
+  added a stage; both times the stage lists the hooks carried had to be edited by hand, and the line
+  above at D14 records the first time one of them did not get edited. It happened again, in the other
+  direction. In FSMTable the gate's `CI_DEFAULT_STAGES` had gained `fuzz` (the stage SPEC.md requires)
+  and `lint`, while the installed `.githooks/pre-push` still named the kit's original eleven — so
+  **every push ran one stage fewer than a hand run, and the stage it skipped was the fuzzer**. In
+  FSMgine the gate's own header comment documented eight stages while its `pre-push` ran fourteen, so
+  the file that explains the gate described a gate that did not exist. The same day, the fast tier
+  (`build tests`) passed a commit whose files `clang-format` would have rewritten; the `format` stage
+  caught it on the next full run, which is how an amend happened on already-published work.
+  The tiers themselves are not the defect — a commit cannot pay minutes, and the kit's reasoning for
+  the split is sound. The defect is that each list was written in four places (the gate's default
+  list, the gate's header comment, `PLUNK-IN.md`'s table, and each hook's own arguments) with nothing
+  checking any of them against the others.
+  Shipped: both lists in the gate as `CI_FAST_STAGES` and `CI_FULL_STAGES`, with `fast` and `full`
+  accepted as stage arguments so a hook names a tier instead of repeating one; `format` in the fast
+  tier (measured at 1 s on a warm tree, and it is the check that bit us); `kitprobes` in the full tier,
+  so a repo carries the probe below without the kit's runner; and `probes/hook-tiers-agree.sh`, which
+  fails when a hook names a stage, when a stage the gate defines sits in no tier, when the fast tier
+  is not a subset of the full one, or when the lists printed in the header comment and in
+  `PLUNK-IN.md` stop agreeing with the variables.
+  Rejected: making both hooks run the full tier (the minutes are real, and a hook slow enough to
+  bypass is one that gets `--no-verify`); rejected: a shared `stages.txt` both the gate and the hooks
+  read (a fourth thing to keep true, and a hook that cannot run the gate is not a tier).
+  The probe's own first day is the caveat worth keeping: it reported FSMTable and FSMgine correctly
+  while examining six fewer stages in FSMgine than it claimed, because it recognised a forwarding
+  alias by a helper's name (`stage_banner` is FSMgine's) and read the stage set from function names
+  rather than from the gate's own `--list`. A guard is only as good as the set it examines, which is
+  why it now fails on an empty set instead of passing vacuously.
 
 ---
 

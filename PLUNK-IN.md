@@ -142,8 +142,13 @@ cannot afford minutes:
 
 | Tier | Hook | Stages | Cost |
 |---|---|---|---|
-| fast | `pre-commit` | `build tests` | ~6 s on a warm build dir |
+| fast | `pre-commit` | `format build tests` | ~6 s on a warm build dir |
 | full | `pre-push` | `--require-clean tree format kitprobes build tests release version asan tsan tidy pristine` | minutes |
+
+Both lists live in `tools/ci.sh`, as `CI_FAST_STAGES` and `CI_FULL_STAGES`, and the hooks pass the
+word `fast` or `full` rather than a list of stages — so a stage added to a repo's gate (a fuzzer,
+say: append it to `CI_FULL_STAGES`) reaches the hook without the hook being edited.
+`probes/hook-tiers-agree.sh` checks the two lists against the code and against this table.
 
 ---
 

@@ -16,11 +16,21 @@
 #
 #   git config core.hooksPath .githooks     # one-time, per clone, enables the hooks
 #
-# Two tiers, because a C++ full run is minutes and a commit cannot afford minutes:
+# Two tiers, because a C++ full run is minutes and a commit cannot afford minutes. Both lists
+# live below as CI_FAST_STAGES and CI_FULL_STAGES, and the hooks NAME a tier rather than
+# repeating its stages, so a stage cannot be added to the gate and forgotten by a hook:
 #
-#   fast  (pre-commit)  build tests
+#   fast  (pre-commit)  format build tests
 #   full  (pre-push)    --require-clean tree format kitprobes build tests release version
 #                       asan tsan tidy pristine
+#
+# `format` is in the fast tier because it is the one check that says "the file you are about to
+# commit is not the file the formatter would write" — measured at well under a second on a warm
+# tree, and the cheap half of the rule the full tier enforces on the way out.
+#
+# A repo whose spec needs a stage the kit does not ship (a fuzzer, say) appends it to
+# CI_FULL_STAGES here. That is the only place it has to be added: the hook and the guard that
+# checks these lists both read the variable.
 #
 # Configuration lives in .ci.env (gitignored, optional); every knob has a default here,
 # so the repo works with no config at all. See .ci.env.example.
@@ -73,7 +83,9 @@ CI_TSAN_BUILD_DIR=${CI_TSAN_BUILD_DIR:-build-tsan}
 CI_LOG_DIR=${CI_LOG_DIR:-.ci-logs}
 CI_STRICT_TOOLS=${CI_STRICT_TOOLS:-0}           # 1 = a missing tool fails instead of SKIPping
 CI_KEEP_TMP=${CI_KEEP_TMP:-0}                   # 1 = keep the pristine temp dir for inspection
-CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-"tree format kitprobes build tests release version asan tsan tidy pristine"}
+CI_FAST_STAGES=${CI_FAST_STAGES:-"format build tests"}
+CI_FULL_STAGES=${CI_FULL_STAGES:-"tree format kitprobes build tests release version asan tsan tidy pristine"}
+CI_DEFAULT_STAGES=${CI_DEFAULT_STAGES:-$CI_FULL_STAGES}
 CI_TIDY_BASELINE=${CI_TIDY_BASELINE:-.ci/tidy-baseline.txt}
 CI_BUILD_TYPE=${CI_BUILD_TYPE:-Debug}
 # The SECOND configuration, built and tested by the `release` stage. A gate whose every
@@ -715,6 +727,8 @@ while [ $# -gt 0 ]; do
             done
             printf '\n'
             exit 0 ;;
+        fast) STAGES_REQUESTED+=($CI_FAST_STAGES) ;;
+        full) STAGES_REQUESTED+=($CI_FULL_STAGES) ;;
         --require-clean) REQUIRE_CLEAN=1 ;;
         --allow-untracked) ALLOW_UNTRACKED=1 ;;
         --strict-tools) CI_STRICT_TOOLS=1 ;;
