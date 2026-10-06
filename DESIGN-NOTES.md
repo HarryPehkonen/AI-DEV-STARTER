@@ -343,9 +343,13 @@ Recorded because these were the live judgement calls, and the shipped answer is 
   each carrying the reason beside it, plus `probes/gitignore-footprint.sh`. The probe extracts the
   recipe from the step-3 fenced block (when a repo's `kitprobes` stage passes its gate script
   instead, the probe reads that repo's own `.gitignore` — the fix propagates as a check on each
-  copy, which is D13's rule), applies it in a scratch repo with none of the six paths on disk, and
-  requires all six to come back ignored. The pre-fix recipe is run as a NEGATIVE CONTROL and must
-  fail on 5 of 6; if it passed, the probe would be asserting nothing.
+  copy, which is D13's rule), derives the paths THAT gate audits from its own audit loop, and
+  requires every one of them to come back ignored with nothing on disk. The derivation is
+  deliberate: the probe's first version demanded the kit's audit line byte-for-byte and would
+  have called three of the five C++ repos "missing the fix" when they merely audit a different
+  set (fsmTable adds its fuzz build dir; JSOM names none in a loop at all, which gets a printed
+  SKIP rather than a false verdict). The pre-fix recipe is run as a NEGATIVE CONTROL and must
+  fail; if it passed, the probe would be asserting nothing.
   Rejected: fixing only this kit's own `.gitignore` — the recipe in PLUNK-IN is what each new repo
   copies, so the defect would ship again with the next adoption. Also rejected: touching
   `.release/` in PLUNK-IN step 10 — `release.sh`'s notes directory is not in the `tree` audit
