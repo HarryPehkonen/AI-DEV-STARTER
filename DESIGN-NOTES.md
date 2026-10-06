@@ -494,5 +494,15 @@ let the run finish if the trace is evidence you have to produce.
   drives a copy of the gate in a scratch repository through the stale-index case (must fail), a clean stage
   (must pass) and a partial stage where the index and working tree differ but both are formatted (must
   pass, so the fix cannot outlaw `git add -p`; a naive "index != disk" rule would have). It fails only P1
-  against a pre-fix copy. Lesson worth more than the fix: the probe caught a hole in its own gate that
+  against a pre-fix copy. **The deno template had the same hole with a different mechanism** (same day). `deno fmt --check` reads files
+  from disk, so the same stale-index state passed; but the C++ remedy does not transfer. `deno fmt --check
+  --ext ts -` returns 0 for unformatted stdin (measured on 2.9.6), so piping the staged blob through `--check`
+  installs a check that always passes — a fix that looks right and certifies nothing. The staged blob is tested
+  with the formatter as a pure function instead: format the text, compare it to itself. A file is formatted iff
+  formatting it changes nothing. `deno fmt` takes its config from the CURRENT DIRECTORY (not from the path of
+  what it reads), which is the repo root inside the gate, so the project's own options apply — measured: a
+  95-column line stays one line run from the project and wraps to seven run from /tmp. `probes/format-checks-
+  staged-deno.sh` guards it (6 checks); against both pre-fix gates it fails only P1.
+
+  Lesson worth more than the fix: the probe caught a hole in its own gate that
   reading the code had missed twice.

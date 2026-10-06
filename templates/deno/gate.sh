@@ -74,6 +74,11 @@ if git rev-parse --verify -q HEAD >/dev/null 2>&1; then
   touched="$(
     { git diff --name-only --diff-filter=ACMR "$base" HEAD
       git diff --name-only --diff-filter=ACMR HEAD
+      # `git diff HEAD` compares the WORKING TREE against HEAD and skips the index, so a file
+      # whose staged copy differs from its working-tree copy (staged, then formatted on disk)
+      # appeared in neither it nor the untracked list, and its formatting went unchecked at the
+      # moment a commit would have recorded it.
+      git diff --cached --name-only --diff-filter=ACMR
       # New files are invisible to `git diff` until they are staged, so without this
       # line a brand-new file's formatting is never checked at the moment it is
       # written — only after it has already been committed.
@@ -125,6 +130,38 @@ if [ -n "$files" ]; then
   deno fmt --check $files || fail "deno fmt --check (fix: deno fmt $files)"
 else
   echo "nothing to check"
+fi
+
+# The check above reads files from the WORKING TREE, and a commit records the INDEX. Stage an
+# unformatted file, then format it on disk -- which is what anyone does immediately after this check
+# fails -- and everything above passes while the commit records the unformatted text. HEAD then
+# differs from the working tree, and the next push dies on `tree` with "uncommitted changes", a
+# message that never mentions formatting. Reproduced in a clone on 2026-10-06. Kit fix
+# `format-checks-staged-deno` (docs/KIT-FIXES.md).
+#
+# deno fmt has no --check for stdin: `deno fmt --check --ext ts -` returns 0 for unformatted input
+# (measured on 2.9.6), so piping the staged blob through --check would install a check that always
+# passes. The test is the formatter as a pure function instead: a file is formatted iff formatting its
+# text returns that text unchanged. `deno fmt` reads deno.json from the current directory -- the repo
+# root here -- so this project's own options apply (measured: a 95-column line stays one line here and
+# wraps to seven in /tmp).
+staged_bad=""
+staged="$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '\.(js|ts|css|html|json|jsonc|md)$' || true)"
+for sf in $staged; do
+  blob="$(mktemp)"
+  if git show ":$sf" > "$blob" 2>/dev/null; then
+    if ! deno fmt --ext "${sf##*.}" - < "$blob" | diff -q - "$blob" >/dev/null 2>&1; then
+      staged_bad="$staged_bad $sf"
+    fi
+  fi
+  rm -f "$blob"
+done
+if [ -n "$staged_bad" ]; then
+  echo "    the STAGED copy is not formatted (that is what a commit would record):"
+  for sf in $staged_bad; do echo "      $sf"; done
+  # shellcheck disable=SC2086
+  fail "deno fmt on the STAGED copy (fix: deno fmt$staged_bad && git add$staged_bad)"
 fi
 
 # ---------------------------------------------------------------- 4. artifact identity
