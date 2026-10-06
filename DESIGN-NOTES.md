@@ -2,7 +2,7 @@
 
 **What is authoritative here.** The shipped templates plus this file. Every decision below
 records the panel advice it came from and whether it was **adopted**, **adapted**, or
-**not adopted** (with the reason). Downstream cards should read `D1`–`D17` and
+**not adopted** (with the reason). Downstream cards should read `D1`–`D18` and
 "Known gaps" as the spec; the panel's raw answers are in the traces named below.
 
 ---
@@ -157,7 +157,7 @@ Recorded because these were the live judgement calls, and the shipped answer is 
 
 ---
 
-## 5. Decisions taken (D1–D17), as shipped
+## 5. Decisions taken (D1–D18), as shipped
 
 - **D1 — No files beyond the decided layout.** Only `templates/cpp/.ci.env.example` earns an
   example file; the deno and python gates have no knobs worth configuring.
@@ -480,3 +480,19 @@ let the run finish if the trace is evidence you have to produce.
   still verifies the field in records that carry it, so no record had to migrate at once.
   Not a KIT-FIXES row: nothing was broken, and there is no failure to guard with a probe. What was
   wrong was where a load-bearing check lived.
+
+- **D18 — A gate checks what a COMMIT would record, not what is on disk.** (2026-10-06.) The `format` stage
+  ran clang-format over the working tree, and `git commit` records the index. Reproduced in a throwaway
+  clone: stage an unformatted file, format it on disk — the thing you do immediately after this stage
+  rejects your commit — and the stage reported "1 file(s) conform" while the commit landed the unformatted
+  text. HEAD then differed from the working tree, so the next `--require-clean` push failed in `tree` with
+  "uncommitted changes to tracked files": a message that names no formatting problem, one stage away from
+  the cause. The stage now checks the staged blob too (`git show :<path> | clang-format --dry-run -Werror
+  --assume-filename=<path> -`) and the touched set gained `git diff --cached --name-only`, because
+  `git diff HEAD` compares the WORKING TREE and so skipped every staged-only change — a second hole, found
+  by the probe's first run, not by reasoning. `probes/format-checks-staged.sh` (6 checks) is the guard: it
+  drives a copy of the gate in a scratch repository through the stale-index case (must fail), a clean stage
+  (must pass) and a partial stage where the index and working tree differ but both are formatted (must
+  pass, so the fix cannot outlaw `git add -p`; a naive "index != disk" rule would have). It fails only P1
+  against a pre-fix copy. Lesson worth more than the fix: the probe caught a hole in its own gate that
+  reading the code had missed twice.
