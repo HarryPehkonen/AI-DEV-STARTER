@@ -59,7 +59,14 @@ wired from this kit no longer copies the gate.*
    drift?", and a KitCI-era repo copies no kit file: the policy is its own and the engine is a
    binary. A record now carries `revision`, `record_note`, `adopted_fixes` and `declined_fixes`.
    Existing records keep their `files[]` and the checker still verifies it — the field is optional
-   and stays valid, it is simply no longer written.
+   and stays valid, it is simply no longer written. A record that still carries `files[]` and whose
+   copies have drifted since `revision` says so with one dated, optional field instead of re-reading
+   its hashes: `"fingerprints_retired": "2026-10-07 (L3)"`. The checker then records a stale
+   `repo_sha256` as RETIRED -- green, on a line that says it was NOT verified against disk -- while
+   everything else about the entry (the file exists, the kit blob at `revision`, the `adapted`
+   rules) is still checked. `files[]` itself is left as it was, because it is what stops a sync card
+   from overwriting a deliberate adaptation. This is the marker the four L3 drift repairs carry
+   (UnicodeChecker, FSMTable, FSMgine, jsonTools).
 
 **Why.** Measured, not argued. All twelve gated repos (docsum, Permuto, UnicodeChecker, FSMTable,
 Computo, JSONFuzz, JSOM, jsonTools, FSMgine, Notes, TNGPlaylists, KitCI itself) were converted on

@@ -33,6 +33,12 @@ WHAT THIS DELIBERATELY DOES **NOT** FAIL ON
   * a kit probe the repo neither adopted nor declined: REPORTED, with the result of running it
     against this repo's gate (so the line reads "you are actually missing X" or "you already
     have X"), never a failure -- silence is not a claim.
+  * a `files[]` `repo_sha256` that no longer matches the file on disk, when the record carries
+    `fingerprints_retired` (a dated marker). Added 2026-10-07 with L3: L3 retired the per-file
+    fingerprint for records written after it, and told the four records that still carry `files[]`
+    to MARK their drift rather than re-read five stale hashes -- so a retired entry stays green and
+    says on its own line that it was NOT verified against disk. Everything else about the entry
+    (the file exists, the kit blob at `revision`, the `adapted` rules) is still checked.
 
 --report-diff also prints, per adapted entry, the size of the repo-vs-kit diff and how many kit
 lines at `revision` the repo's copy is missing. THIS IS A REPORT, NOT A VERDICT: diff size
@@ -118,6 +124,15 @@ def main() -> int:
           f"record_kind is retroactive|at-copy ({m.get('record_kind')})")
     check(bool(m.get("record_note")), "record_note is present")
 
+    # OPTIONAL since 2026-10-07 (L3). A dated marker that RETIRES this record's `files[]`
+    # fingerprints: L3 retired the per-file fingerprint for records written after it, and the four
+    # records that still carry `files[]` MARK the drift instead of re-reading their hashes. Instead
+    # of rewriting five stale hashes, the record states the date the fingerprints stopped being read.
+    retired_fp = m.get("fingerprints_retired")
+    if retired_fp is not None:
+        check(isinstance(retired_fp, str) and bool(retired_fp.strip()),
+              f"fingerprints_retired is a dated string ({retired_fp})")
+
     # ---- the revision must be PUBLISHED, and is allowed to be BEHIND ----------
     kit_head = git(["rev-parse", "HEAD"], kit).stdout.decode().strip()
     if not args.no_publish_check:
@@ -150,7 +165,15 @@ def main() -> int:
         if not rf.is_file():
             continue
         repo_now = sha(rf.read_bytes())
-        check(repo_now == e.get("repo_sha256"), f"{rp}: repo_sha256 matches the file on disk")
+        if repo_now == e.get("repo_sha256"):
+            check(True, f"{rp}: repo_sha256 matches the file on disk")
+        elif retired_fp is not None:
+            check(True, f"{rp}: repo_sha256 RETIRED by fingerprints_retired={retired_fp!r} -- the "
+                        f"recorded hash is the files[] state at {rev[:7]}, the file on disk drifted "
+                        f"after it; NOT verified against disk (L3: drift after it is unrecorded by "
+                        f"policy)")
+        else:
+            check(False, f"{rp}: repo_sha256 matches the file on disk")
         blob = git(["cat-file", "blob", f"{rev}:{kp}"], kit, check=False)
         if blob.returncode != 0:
             fails.append(f"{rp}: kit_path {kp} does not exist at {rev}")
