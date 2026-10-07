@@ -452,6 +452,18 @@ summary names every requested stage that therefore did not run:
 GATE FAILED
 ```
 
-Optional, and worth adding when the project has a fuzz target: a `fuzz` stage with a
-short smoke run (the proven instance gives it 10 seconds and leaves the long campaigns to
-a nightly job).
+Optional, and worth adding when the project has a fuzz target. Three things are worth
+copying, each measured on a real target rather than reasoned about. **Give it a short smoke
+run** — the proven instance gives it 10 seconds and leaves the long campaigns to a nightly
+job — and know that a real fuzz stage is usually a *sequence*, not one command: Permuto's
+runs a `-runs=0` seed pass that must see both identity counters move, then the timed
+campaign, with the campaign length an **environment knob** (`CI_FUZZ_SECONDS`, default small)
+rather than a stage key, so a manual `CI_FUZZ_SECONDS=1800 tools/ci.sh fuzz` stays possible.
+**Assert the target's OUTPUT contract, not just that it does not crash:** have it render every
+accepted input through every output format (or emit the verdict, the table, the baseline) and
+abort on output that is empty, differs between two runs, or carries something it must not.
+KitCI's parser fuzz target did exactly that and caught a real leak on its first consumer — a
+repo name that spelled a URL reached the generated HTML page (commit `2b2c8da`) — before any
+human rendered it. This one is guidance, not a kit fix: there is no probe, because the
+contract belongs to your output, not to the gate. The stage itself goes in `CI_FULL_STAGES`
+(step 2), so the pre-push hook runs it without the hook being edited.
