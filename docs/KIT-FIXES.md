@@ -14,6 +14,12 @@ Read it without a checkout:
 git -C ~/hermes-workspace/AI-DEV-STARTER show HEAD:docs/KIT-FIXES.md
 ```
 
+**A gate is a program, not a text file** — when a tool must regex your source to learn your
+stages, that is a defect in the artifact: ask the gate (`tools/ci.sh --list`) rather than
+knowing the spelling of the line. Measured 2026-10-06: JSOM's `tools/check_docs.py`
+pattern-matched the `CI_DEFAULT_STAGES` assignment, so the `hook-tiers-agree` change below
+broke every doc-table check in that repo while the list it read was unchanged.
+
 ## The fixes
 
 | Fix (the `name` a repo records) | Probe | What it changes, and the symptom when it is missing | Applies to | Kit commit that added it | Note |
