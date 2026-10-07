@@ -234,6 +234,14 @@ worth (one diff, two arms, one run each — a signal, not a proof), so the next 
 weigh them instead of trusting them. Hand the clauses over **in the prompt**, next to the
 diff: a standard that stays in a document is a standard that never changes a review.
 
+**When the job is an agent build, the brief is the document that matters.** A multi-sitting
+feature is briefed, not described: frozen vocabulary, a frozen test list, a `QUESTIONS.md`
+with the owner's rulings in it, a `REPORT.md` as the only narration, and the rule *a claim you
+cannot back with gate output is not a result*. That shape is `docs/SPEC-BRIEFING.md` in this
+kit; two agent builds have run on it (`fsmTable`, `KitCI`) with zero rework from independent
+verification. Unlike the three above, the brief itself is not copied from the kit — it is
+written per build.
+
 ---
 
 ## Step 6 — first run: make it pass on the committed tree
