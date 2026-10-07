@@ -59,8 +59,8 @@ check() {  # check <rc> <description>
 printf '=== probe: the gate-footprint recipe is slash-free\n'
 
 case "$(basename "$G")" in
-    PLUNK-IN.md) SRC="$G";              FROM="PLUNK-IN.md step 3, the fenced block"; GATE=$ROOT/templates/cpp/ci.sh ;;
-    .gitignore)  SRC="$G";              FROM="read straight through";                 GATE=$ROOT/templates/cpp/ci.sh ;;
+    PLUNK-IN.md) SRC="$G";              FROM="PLUNK-IN.md step 3, the fenced block"; GATE=$ROOT/examples/cpp/ci.sh ;;
+    .gitignore)  SRC="$G";              FROM="read straight through";                 GATE=$ROOT/examples/cpp/ci.sh ;;
     *)           SRC="$ROOT/.gitignore"; FROM="this repo's own copy";                 GATE=$G ;;
 esac
 printf '    recipe: %s\n    source: %s\n' "$SRC" "$FROM"

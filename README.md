@@ -47,29 +47,30 @@ how a starter kit becomes a framework nobody uses.
 | `docs/KIT-REVISION-CONVENTION.md` | how a repo records the kit revision it was wired from, and which kit fixes it has adopted or declined since |
 | `templates/CLAUDE.md.template` | the agent contract doc, with the gotchas section pre-shaped |
 | `templates/REVIEW.md.template` | how to review a change here: run the gate instead of repeating it, three clauses on precision and evidence, and an honest note on what they are worth |
-| `templates/deno/gate.sh` | Deno gate: lint → tests → format (touched) → artifact identity |
-| `templates/python/gate.sh` | Python gate: lint → format (touched) → tests → types → a clean environment (a wheel in a fresh venv, or `requirements.txt` + the suite from a fresh venv) → identity |
-| `templates/cpp/ci.sh` | C++ gate, two tiers and eleven stages (copy of the proven one) |
-| `templates/cpp/.ci.env.example` | every knob the C++ gate has, with defaults and why |
+| `gate.toml` + `kit-ci` | **the gate** — the policy is a file in each repo, the engine is one binary per machine. Neither is in this box: install `kit-ci` (`KitCI`, `docs/GETTING-STARTED.md`) and copy the policy from a converted repo — `PLUNK-IN.md` step 2 |
+| `examples/` | the three bash gates (`cpp/ci.sh`, `python/gate.sh`, `deno/gate.sh`) and the two hooks that dispatch to them — the **no-engine fallback**, demoted from `templates/` on 2026-10-07, with the reason and the measurements in `examples/README.md` |
+| `examples/cpp/.ci.env.example` | every knob the C++ gate has, with defaults and why |
 | `templates/cpp/release.sh` | the release process for a C++ repo that tags releases: propose the version, draft the notes, and refuse to publish while the compatibility table is still a placeholder |
 | `templates/cpp/version.hpp.in` | the generated version header — one home for the number, and the CMake wiring that keeps the header and the `project()` line from drifting |
-| `templates/hooks/pre-commit` | fast tier — runs on `git commit` |
-| `templates/hooks/pre-push` | full tier — runs on `git push` |
-| `probes/<slug>.sh` | one per kit fix that must propagate: takes a gate script and exits non-zero when that fix is missing from it. The fixes, and what a repo does about each: `docs/KIT-FIXES.md` |
+| `probes/<slug>.sh` | one per kit fix that must propagate: exits non-zero when that fix is missing from the artifact it guards. Two ship (`release-process`, `gitignore-footprint`); the seven whose subject was a copied gate retired on 2026-10-07 — `docs/KIT-FIXES.md` → "Retired fixes" |
 | `tools/kit-probes.sh` | the kit's own run of every probe, against the kit file(s) it guards — one run per `# guards:` line (`--list` shows what each one checks) |
 
-Both hook files dispatch to whatever gate the repo has (`tools/ci.sh` for C++,
-`scripts/gate.sh` for Deno/Python), so the same two hooks can be copied into any repo.
+**The gate is not in this box, and that is the point.** It is `gate.toml` in each repo plus `kit-ci`,
+one binary per machine: a repo carries *policy*, and there is no gate file to copy, adapt and
+silently fall behind on. All twelve gated repos on this fleet were converted on 2026-10-05/06;
+`PLUNK-IN.md` step 2 is the adoption guide. The bash gates the kit used to ship are in `examples/`,
+kept as the fallback for a machine that cannot build the engine.
 
-A copied repo does not sync itself, so **a fix that must propagate ships a probe**: the
-probe is copied into the repo as `tools/kit-probes/<slug>.sh`, and the gate's `kitprobes`
-stage runs every probe it finds there against itself. It needs no kit checkout, no network
-and no build, and it fails the push on the machine that would otherwise have pushed the lag.
-`PLUNK-IN.md` step 9 has the rule, the why, and the limits.
+For the artifacts a repo **does** still copy — the release script, the two document templates, the
+`.gitignore` recipe — the old rule holds: a copied file does not sync itself, so **a fix that must
+propagate ships a probe**. The probe is copied into the repo as `tools/kit-probes/<slug>.sh` and run
+against that copy. It needs no kit checkout, no network and no build, and it fails the push on the
+machine that would otherwise have pushed the lag. `PLUNK-IN.md` step 9 has the rule, the why, and the
+limits.
 
 ---
 
-## The gate contract — six rules every template satisfies
+## The gate contract — six rules every gate here satisfies
 
 1. **Reports EVERY failure, not just the first.** One run tells you everything that is
    wrong: the Deno and Python gates run every stage and accumulate; the C++ gate reports
@@ -126,17 +127,17 @@ and every rule in the agent contract carries its gotcha. **The rationale is load
 Read `PLUNK-IN.md`. The short version, for a repo that already has a git history:
 
 ```bash
-# 1. the two hooks (they dispatch to whatever gate the repo has)
-mkdir -p .githooks
-cp <kit>/templates/hooks/pre-commit .githooks/pre-commit
-cp <kit>/templates/hooks/pre-push   .githooks/pre-push
-chmod +x .githooks/pre-commit .githooks/pre-push
-git config core.hooksPath .githooks
+# 1. the engine (once per machine) — a Release build, in its own build dir
+cmake -S <path>/KitCI -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release && cmake --install build-release --prefix ~/.local
 
-# 2. the gate for your language
-mkdir -p scripts tools
-cp <kit>/templates/deno/gate.sh scripts/gate.sh     # or python/gate.sh, or cpp/ci.sh
+# 2. the policy + the wrapper + the hooks, from a repo that is already converted
+mkdir -p scripts
+cp <converted-repo>/gate.toml       gate.toml     # then edit the stages for THIS repo
+cp <converted-repo>/scripts/gate.sh scripts/gate.sh
+cp -r <converted-repo>/.githooks    .githooks
 chmod +x scripts/gate.sh
+git config core.hooksPath .githooks               # per clone; git never copies hooks for you
 
 # 3. the agent contract and the incident log
 cp <kit>/templates/CLAUDE.md.template CLAUDE.md     # then fill every <placeholder>
@@ -146,6 +147,9 @@ cp <kit>/INCIDENTS.md .
 scripts/gate.sh
 git commit -am "process: plunk in the gate"     # the hook now runs it for you
 ```
+
+On a machine that cannot build the engine, take a bash gate from `examples/` instead: step 2 of
+`PLUNK-IN.md` carries both paths, and `examples/README.md` says which hooks pair with which.
 
 Step 4 is the one that matters. A gate that has never passed on this repo is not a gate
 yet — it is a file. The first run will find pre-existing problems; fix them or record

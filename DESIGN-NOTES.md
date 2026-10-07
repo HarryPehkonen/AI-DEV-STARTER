@@ -5,6 +5,16 @@ records the panel advice it came from and whether it was **adopted**, **adapted*
 **not adopted** (with the reason). Downstream cards should read `D1`–`D18` and
 "Known gaps" as the spec; the panel's raw answers are in the traces named below.
 
+**2026-10-07 (L3) — what a downstream card must know before reading them.** The gate those
+templates shipped is no longer copied: a repo carries `gate.toml` (policy) and the machine carries
+`kit-ci` (engine). The three bash gates and the two hooks moved to `examples/` (the no-engine
+fallback), the hooks now **name a tier** instead of spelling a stage list, and seven probes were
+retired because their subject was the copied gate — `docs/KIT-FIXES.md` → "Retired fixes" has the
+index and the L3 entry in `docs/KIT-REVISION-CONVENTION.md` has the reasoning. The passes below are
+left exactly as written, because they are the record of *how the templates were designed*; where a
+`D`-entry names a `templates/...` path, read `examples/...`, and where it names a `probes/...` file
+as shipped, read it as retired (recoverable from this kit's history).
+
 ---
 
 ## 1. The MoA design passes

@@ -14,6 +14,43 @@ arbitrary checks get deleted. The rationale is the load-bearing part.
 
 ---
 
+## 2026-10-07 — seven probes were checks on a file the whole fleet stopped having
+
+What broke:        Not a break — a promotion with a measured cost, written down because the evidence
+                   is the whole point. The kit shipped nine probes, each of which takes **a gate
+                   script** and reports whether one kit fix is in it. Since 2026-10-05/06 no repo on
+                   this fleet has one: the gate is `gate.toml` (policy, in the repo) run by `kit-ci`
+                   (engine, one binary per machine), and the stage bodies are `scripts/*.sh`. Measured
+                   on Permuto (2026-10-06, card `t_6989cec2`), the probes were GREEN against
+                   `tools/ci.sh` immediately before its conversion, and run afterwards against the new
+                   entry point `scripts/gate.sh`: `format-checks-staged` GREEN, `git-index-file`
+                   GREEN, `gate-stage-guards` RED, `hook-tiers-agree` RED, `tidy-baseline` RED — and
+                   both GREENs are accidents of how those two probes SEARCH. A `kitprobes` stage whose
+                   verdict is accidental is the exact failure this file exists for.
+Check added:       Seven probes deleted (`tidy-baseline`, `gate-stage-guards`, `git-index-file`,
+                   `hook-tiers-agree`, `format-checks-staged`, `format-checks-staged-deno`,
+                   `optimized-stage`) and each guarantee traced to an existing place BEFORE the
+                   deletion: **no new tool, no engine change** (v1.1 unchanged). The trace table — one
+                   row per probe, its guarantee, where it lives now, and the command that shows it —
+                   is `docs/KIT-FIXES.md` → "Retired fixes"; every row's "superseded by" note in the
+                   KIT-FIXES table points at it. The two probes that stay are named there too, with
+                   why (`release-process` guards `templates/cpp/release.sh`; `gitignore-footprint`
+                   guards the `.gitignore` recipe) — both subjects are still copied artifacts. The
+                   gate templates themselves moved to `examples/` with `examples/README.md` saying
+                   what they are now (the no-engine fallback) and what they were; `PLUNK-IN.md` step 2
+                   is the engine's adoption guide and step 9 is the probe rule restated for what is
+                   still copied; `docs/KIT-REVISION-CONVENTION.md` gains the L3 entry, which is also
+                   where the per-file `files[]` fingerprint retired.
+Why it must stay:  The next sync card sees two probes in the kit and no copy in any repo. Without the
+                   trace and the seven "superseded" notes, that reads as lag — a repo that has not
+                   taken a fix — when it is the opposite: the fix's subject stopped existing, and the
+                   guarantee is held somewhere a copy and its probe could never reach (the engine's
+                   runner, a named stage script in the repo's own policy, or a structural fact such
+                   as "the hook names a tier"). The deleted files are recoverable from git; the
+                   measurements that justify deleting them are not, which is why they are here.
+
+---
+
 ## 2026-09-20 — a pathspec commit ran its own gate under git's TEMPORARY index
 
 What broke:        `git commit -- <path>` builds a TEMPORARY index and exports its path to the

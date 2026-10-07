@@ -31,19 +31,25 @@ first run is not a full audit; it is a check on what you change from now on.
 
 ## Step 1 — the two hooks
 
+The hooks are the gate's two callers (step 2). They are tracked, so the policy travels with the
+clone, and they **name a tier** rather than repeating a stage list — a list repeated in a hook is a
+copy nothing compares, and this kit has an incident from exactly that (`INCIDENTS.md`,
+`hook-tiers-agree`).
+
 ```bash
 mkdir -p .githooks
-cp "$KIT/templates/hooks/pre-commit" .githooks/pre-commit
-cp "$KIT/templates/hooks/pre-push"   .githooks/pre-push
+cp <converted-repo>/.githooks/pre-commit .githooks/pre-commit
+cp <converted-repo>/.githooks/pre-push   .githooks/pre-push
 chmod +x .githooks/pre-commit .githooks/pre-push
 
 # arm them in THIS clone (git never copies hooks for you)
 git config core.hooksPath .githooks
 ```
 
-These two files dispatch to whatever gate the repo has: `tools/ci.sh` if it exists (C++,
-two tiers), otherwise `scripts/gate.sh` (Deno/Python, gate is already seconds). Copy
-them once and they work for any language.
+Take them from a repo that is already converted (`docsum` is Deno/Python, `Permuto` is C++), not
+from this kit: the kit's own `examples/hooks/` pair is the OLD shape, which dispatches to a
+`tools/ci.sh` and passes the tier as a positional word. Take a gate from `examples/` (step 2) and
+you want that pair; take the engine and you want a converted repo's.
 
 > **The one step nothing enforces.** A fresh clone has to run
 > `git config core.hooksPath .githooks` again, and forgetting it is silent. The
@@ -52,13 +58,93 @@ them once and they work for any language.
 
 ---
 
-## Step 2 — the gate for this repo's language
+## Step 2 — the gate: one engine per machine, one policy per repo
 
-### Deno
+The gate is two halves, and only one of them is per repo:
+
+- **the policy is `gate.toml`, in the repo** — the stages, the tiers and their failure rules;
+- **the engine is `kit-ci`, one binary per machine**, installed once and never committed.
+
+Install the engine (Release: it is the binary every gate on the machine runs — measured 351,456
+bytes installed, against the Debug build's 3,008,096):
+
+```bash
+cmake -S ~/hermes-workspace/KitCI -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+cmake --install build-release --prefix ~/.local      # -> ~/.local/bin/kit-ci
+```
+
+Then three things in the repo, copied from one that is already converted — `docsum` (Python),
+`Permuto` and `jsonTools` (C++), `Notes` and `TNGPlaylists` (Deno). **KitCI's own
+`~/hermes-workspace/KitCI/docs/GETTING-STARTED.md` is the adoption guide now**; read it for the
+option list, and use this for the shape:
 
 ```bash
 mkdir -p scripts
-cp "$KIT/templates/deno/gate.sh" scripts/gate.sh
+cp <converted-repo>/gate.toml        gate.toml
+cp <converted-repo>/scripts/gate.sh  scripts/gate.sh
+cp -r <converted-repo>/.githooks     .githooks
+chmod +x scripts/gate.sh
+git config core.hooksPath .githooks  # per clone — step 1
+```
+
+`scripts/gate.sh` is a wrapper of a few lines: `cd` to the repo root, `unset GIT_INDEX_FILE`, fail
+loudly if `kit-ci` is not installed, else `exec kit-ci --tier "${GATE_TIER:-full}"`. **Changing the
+gate means editing `gate.toml`, not the wrapper.** Two converted copies predate the `unset` line
+(`docsum` and `Notes`); add it when you take a copy that is missing it — the reason is below, and the
+repos exposed to the defect are the ones whose stages run `git` in *another* repository.
+
+Then edit `gate.toml` for this repo. A stage is a name and a `cmd`; a stage that needs more than one
+command gets a script next to it, which is what makes the old stage bodies move over intact:
+
+```toml
+[gate]
+repo = "myrepo"
+
+[tier.fast]
+stages = ["format", "build", "tests"]     # the commit path: seconds, not minutes
+
+[tier.full]
+stages = ["*"]                            # every declared stage, in declaration order
+
+[stage.format]
+cmd = "scripts/format.sh"
+when = "tool:clang-format"                # a tool that is missing SKIPS the stage; it cannot fail it
+```
+
+Five rules that follow from the engine, each with a home in this kit's incidents:
+
+- **The hooks NAME a tier** (`--tier fast`, `--tier full`); the engine has no stage-selection flag.
+  The old `tools/ci.sh fuzz` is now `scripts/fuzz.sh` — the same script the stage runs, with the
+  same environment (`CI_FUZZ_SECONDS=1800 scripts/fuzz.sh`).
+- **`--require-clean` has no flag either.** The pre-push hook exports `CI_REQUIRE_CLEAN=1` and the
+  repo's own tree stage reads it. A hand run is never required to be clean.
+- **`unset GIT_INDEX_FILE` belongs in `scripts/gate.sh`** (a converted repo's `scripts/gate-env.sh`
+  carries the long note). `git commit -- <path>` hands the hook a TEMPORARY index, and any `git`
+  command the gate runs in ANOTHER repository then dies on the first blob it does not have. The
+  engine does not do this for you — it runs `/bin/sh -c` with the environment it inherited.
+- **Read the gate instead of knowing it:** `kit-ci --list` (stages, tiers), `kit-ci --graph` (the
+  flow), `kit-ci --ast` (the parsed config as JSON). A tool that learns your stages by regexing a
+  file is a tool that breaks when the file is edited — ask the gate.
+- **Exit codes:** `0` every stage passed, `1` a stage failed (and every stage still ran — the engine
+  never stops at the first failure), `2` nothing ran: unreadable or invalid config, or a tier that
+  resolved to no stages.
+
+---
+
+### The no-engine fallback — the bash gates in `examples/`
+
+Use this only on a machine that cannot build the engine. Everything below describes the OLD path:
+a gate you copy into the repo and then own, which is a *fork* — measured, the four real C++ forks
+drifted from the kit by 60, 89, 582 and 586 lines, and that is why the fleet moved on
+(`examples/README.md`). The files are still maintained and the probes that guard them still ship;
+`examples/README.md` says what each one is and which hooks pair with it.
+
+#### Deno
+
+```bash
+mkdir -p scripts
+cp "$KIT/examples/deno/gate.sh" scripts/gate.sh
 chmod +x scripts/gate.sh
 ```
 
@@ -75,11 +161,11 @@ them by name, so a task that does not exist is a gate failure, not a skip):
 }
 ```
 
-### Python
+#### Python
 
 ```bash
 mkdir -p scripts
-cp "$KIT/templates/python/gate.sh" scripts/gate.sh
+cp "$KIT/examples/python/gate.sh" scripts/gate.sh
 chmod +x scripts/gate.sh
 ```
 
@@ -102,12 +188,12 @@ it uses your project venv when there is one. `uv` is the recommended install:
 curl -LsSf https://astral.sh/uv/install.sh | sh    # if uv is not already there
 ```
 
-### C++
+#### C++
 
 ```bash
 mkdir -p tools
-cp "$KIT/templates/cpp/ci.sh" tools/ci.sh
-cp "$KIT/templates/cpp/.ci.env.example" .ci.env.example
+cp "$KIT/examples/cpp/ci.sh" tools/ci.sh
+cp "$KIT/examples/cpp/.ci.env.example" .ci.env.example
 chmod +x tools/ci.sh
 ```
 
@@ -148,7 +234,10 @@ cannot afford minutes:
 Both lists live in `tools/ci.sh`, as `CI_FAST_STAGES` and `CI_FULL_STAGES`, and the hooks pass the
 word `fast` or `full` rather than a list of stages — so a stage added to a repo's gate (a fuzzer,
 say: append it to `CI_FULL_STAGES`) reaches the hook without the hook being edited.
-`probes/hook-tiers-agree.sh` checks the two lists against the code and against this table.
+`probes/hook-tiers-agree.sh` checked the two lists against the code and against this table; it is one
+of seven gate probes retired on 2026-10-07 (`docs/KIT-FIXES.md` → "Retired fixes"), because in the
+engine's world the hooks name a tier and hold no list at all. If you take a bash gate from
+`examples/`, they are recoverable from this kit's history — see `examples/README.md`.
 
 ---
 
@@ -189,9 +278,12 @@ EOF
 ## Step 4 — point the artifact-identity check at YOUR pair
 
 Every project gets exactly one "two copies of one number must agree" check. Pick the pair
-that already exists in this repo, and set it in one of three ways:
+that already exists in this repo, and set it in one of three ways. Whichever half you took, the check
+is a **stage**: in a converted repo its knobs live in that stage's own script (`scripts/identity.sh`,
+`scripts/version.sh`) and the shared `scripts/gate-env.sh`; the names below are the ones the bash gate
+uses, and the converted repos kept them as the stage scripts' names (`examples/README.md`).
 
-| Language | Default the gate ships with | Change it by |
+| Language | Default the gate checks | Change it by |
 |---|---|---|
 | Deno | `public/version.js` `APP_VERSION` ↔ `sw.js` `CACHE_NAME` | `VERSION_FILE=`/`CACHE_FILE=` at the top of `scripts/gate.sh` |
 | Python, packaged (`pyproject.toml`) | `pyproject.toml` `version` ↔ `__version__` of the installed wheel | nothing to set — it finds the package under `src/` or the repo root |
@@ -254,10 +346,12 @@ git status                        # nothing modified by the gate? good
 Expect the first run to find real problems. Handle them in this order:
 
 1. **Fix them**, if the fix is small.
-2. **Record them as accepted findings**, if they are pre-existing and large — the C++
-   tidy baseline exists for exactly this: run `tools/ci.sh --write-tidy-baseline` and commit
-   the file it writes. (`CI_TIDY_BASELINE` in `.ci.env.example` explains why the file's form
-   matters and how the comparison reads it.)
+2. **Record them as accepted findings**, if they are pre-existing and large — the C++ tidy baseline
+   exists for exactly this: run `tools/ci.sh --write-tidy-baseline` and commit the file it writes
+   (a converted repo runs the same idea as its own stage script,
+   `scripts/write-tidy-baseline.sh`, with the normaliser in `scripts/gate-env.sh`).
+   (`CI_TIDY_BASELINE` in `.ci.env.example` explains why the file's form matters and how the
+   comparison reads it.)
 3. **Never** weaken the gate to reach green. A check that is wrong gets deleted *with an
    incident entry*, not silently.
 
@@ -315,7 +409,13 @@ stops the check being deleted six months from now by someone who sees no reason 
 
 ---
 
-## Step 9 — keep your copy true to the kit: probes
+## Step 9 — keep a copied artifact true to the kit: probes
+
+**This step covers the artifacts a repo still copies** — `templates/cpp/release.sh`, the two document
+templates (`CLAUDE.md.template`, `REVIEW.md.template`) and the `.gitignore` recipe. It does **not**
+cover the gate: since 2026-10-06 there is no gate file to copy, so there is nothing to drift — and
+the seven probes that existed to hold a copied gate are retired, each guarantee traced to where it
+lives now in `docs/KIT-FIXES.md` → "Retired fixes".
 
 Copies do not sync. A defect fixed in the kit stays live in every repo that copied that file
 earlier — which is how one broken clang-tidy baseline recipe was found four separate times
@@ -323,30 +423,31 @@ before anyone noticed it was one bug. The rule that closes that class:
 
 > **A fix that must propagate ships a probe.**
 
-A probe is a small script in the kit's `probes/` that takes a gate script and exits non-zero
+A probe is a small script in the kit's `probes/` that takes a copied file and exits non-zero
 when ONE kit fix is absent from it — checked **by name and by behaviour**, not by hash and not
-by diff. The reference is `probes/tidy-baseline.sh` (7 checks: the normaliser exists; it
-strips the repo root and `:line:col` when fed a synthetic finding; both sides of the
-comparison go through it; `--write-tidy-baseline` shares it). To carry it:
+by diff. Two ship today: `probes/release-process.sh` (guards `templates/cpp/release.sh`, `PLUNK-IN.md`
+step 10) and `probes/gitignore-footprint.sh` (guards the step-3 recipe and your `.gitignore`). To
+carry one:
 
 ```bash
 mkdir -p tools/kit-probes
-cp "$KIT/probes/tidy-baseline.sh" tools/kit-probes/    # one file per fix you carry
-tools/ci.sh kitprobes                                  # or: scripts/gate.sh
+cp "$KIT/probes/release-process.sh" tools/kit-probes/   # one file per fix you carry
+bash tools/kit-probes/release-process.sh tools/release.sh .
 ```
 
-`tools/kit-probes/` **is the list of fixes your copy claims to carry**, and the `kitprobes`
-stage runs every script in it against the gate that invoked it — offline, no kit checkout, no
-network, no build, under a second. (The index of the fixes themselves — what each one changes, the
-symptom without it, and the kit commit it came from — is `docs/KIT-FIXES.md`.) A copy with no
-`tools/kit-probes/` SKIPs the stage on
-purpose: it means "carries no probe yet", which is not the same statement as "is behind".
-Record each probe file in `.ai-dev-starter.json` like any other copied artifact, so the claim
-is auditable (`docs/KIT-REVISION-CONVENTION.md` in this kit, section
-"So how drift is actually caught: probes"). A probe whose fix lands in more than one template
-names each of them in its own `# guards:` line, and the kit's runner (`tools/kit-probes.sh`)
-runs it once per guarded file — that is the kit's own check that all three templates satisfy
-the fix, not just the one a single line could name.
+`tools/kit-probes/` **is the list of fixes your copy claims to carry**. (The index of the fixes
+themselves — what each one changes, the symptom without it, and the kit commit it came from — is
+`docs/KIT-FIXES.md`.) Record the claim in `.ai-dev-starter.json` as an `adopted_fixes` entry, so it
+is auditable (`docs/KIT-REVISION-CONVENTION.md`; a new record carries no `files[]` — see its L3
+entry). A probe whose fix lands in more than one file names each of them in its own `# guards:`
+line, and the kit's runner (`tools/kit-probes.sh`) runs it once per guarded file.
+
+A repo that took a gate from `examples/` instead of the engine keeps a `kitprobes` stage in that
+gate, which runs everything in `tools/kit-probes/` against it — offline, no kit checkout, no network,
+no build, under a second — and a copy with no `tools/kit-probes/` SKIPs the stage on purpose: it
+means "carries no probe yet", which is not the same statement as "is behind". The seven retired gate
+probes are exactly the checks such a copy wants; they are in this kit's history and
+`examples/README.md` has the command that brings one back.
 
 **Why not compare the file against the kit.** Because a copy is a *fork*, not a copy, and the
 two answers a byte or diff comparison can give are both wrong here: it reports every local
@@ -403,6 +504,11 @@ Repos that never tag a release skip this step: a release process in a repo with 
 is a file, not a process.
 
 ## Appendix — what each gate runs
+
+Two gates run on this fleet now. **The engine path** is `gate.toml` + `kit-ci`: what runs is the
+repo's own policy, and `kit-ci --list` prints it — there is deliberately no second list here, because
+the list *is* the file. **The fallback path** is the bash gates in `examples/`; what each of those
+runs is below, and it is also what a converted repo's stage scripts inherited.
 
 **Deno** — `lint` (`deno task lint`) → `tests` (full `deno task test`) → `format`
 (`deno fmt --check`, touched files only) → `artifact identity` (APP_VERSION ↔

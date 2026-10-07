@@ -34,7 +34,84 @@ showed, in no kit checkout either. An unversioned convention has no history to b
 which is the defect this document exists to prevent, so it moved into the kit and now travels with
 the artifacts it governs.
 
-## Exact file shape
+## L3 (2026-10-07) — the kit stopped shipping a gate; the record stopped fingerprinting files
+
+**What changed.** Three things at once, all of them deletions, all of them one decision: *a repo
+wired from this kit no longer copies the gate.*
+
+1. **The gate is policy + engine, not a file.** Adoption is now: install `kit-ci` (a Release
+   configure in its own build dir, `cmake --install --prefix ~/.local`), then write `gate.toml`,
+   the `scripts/gate.sh` wrapper and `.githooks/`, and arm it once per clone
+   (`git config core.hooksPath .githooks`). The bash gates this kit used to ship —
+   `templates/{cpp/ci.sh,python/gate.sh,deno/gate.sh}` and the two hooks that dispatched to them —
+   moved to **`examples/`** and stay there as the fallback for a machine that cannot build the
+   engine. `PLUNK-IN.md` step 2 is the adoption guide; `KitCI/docs/GETTING-STARTED.md` is the
+   engine's.
+2. **Seven probes are retired** — `tidy-baseline`, `gate-stage-guards`, `git-index-file`,
+   `hook-tiers-agree`, `format-checks-staged`, `format-checks-staged-deno`, `optimized-stage`. Their
+   subject was a copied gate script, and no repo on the fleet has one any more. Each guarantee was
+   traced to an existing place **before** its probe was deleted (the engine's runner, a named stage
+   script in a converted repo's policy, or struct: `docs/KIT-FIXES.md` → "Retired fixes"). Two
+   probes stay (`release-process`, `gitignore-footprint`) because their subject is not a gate and
+   still ships. **No new tool, subcommand or engine capability was built for any of this; the engine
+   is unchanged at v1.1.**
+3. **The per-file `files[]` fingerprint is retired for new records.** It answered "did the copy
+   drift?", and a KitCI-era repo copies no kit file: the policy is its own and the engine is a
+   binary. A record now carries `revision`, `record_note`, `adopted_fixes` and `declined_fixes`.
+   Existing records keep their `files[]` and the checker still verifies it — the field is optional
+   and stays valid, it is simply no longer written.
+
+**Why.** Measured, not argued. All twelve gated repos (docsum, Permuto, UnicodeChecker, FSMTable,
+Computo, JSONFuzz, JSOM, jsonTools, FSMgine, Notes, TNGPlaylists, KitCI itself) were converted on
+2026-10-05/06. The reason the copies were a problem is the number that started this whole document:
+the four real C++ forks differed from the kit's blob by **60, 89, 582 and 586 lines**, no diff or
+hash could separate a deliberate adaptation from being one fix behind, and the probes that existed
+to answer it stopped answering: run against a converted repo's new entry point they read
+`format-checks-staged` GREEN, `git-index-file` GREEN, `gate-stage-guards` RED, `hook-tiers-agree`
+RED, `tidy-baseline` RED — and **both GREENs are accidents of how those probes search**. A probe is
+a check on a file that no longer exists.
+
+**What replaces what.**
+
+| was | is now |
+|---|---|
+| `templates/{cpp,python,deno}/gate.sh` (copy and edit) | `gate.toml` + `scripts/<stage>.sh` in the repo, run by `kit-ci` (one binary per machine); the old gates are `examples/*` |
+| `templates/hooks/*` (which spelled a stage list) | `.githooks/pre-commit` and `.githooks/pre-push` naming a **tier** of `gate.toml` (copy from a converted repo) |
+| a probe per kit fix, copied into `tools/kit-probes/` and run by a `kitprobes` stage | the engine's own test suite, a named stage script in the repo's policy, or a structural fact — see `docs/KIT-FIXES.md`, "Retired fixes" |
+| `files[]`: `repo_sha256` + `kit_path` per copied file | nothing: `revision` (the kit commit the adoption was taken from) + `adopted_fixes` / `declined_fixes` |
+
+**What it means for a sync card.** There is no `files[]` to re-read, so nothing to re-hash; `revision`
+now names the kit commit the *adoption recipe* (PLUNK-IN step 2 + the engine version) came from, and
+moving it still means "this repo was re-wired from there". The probe rule in `PLUNK-IN.md` step 9
+still holds for the two artifacts a repo still copies (`templates/cpp/release.sh`,
+`templates/CLAUDE.md.template`, `templates/REVIEW.md.template`, the `.gitignore` recipe) — for the
+gate, the drift class is gone because the artifact is gone.
+
+## Exact file shape (L3 and after: no `files[]` for a new record)
+
+```json
+{
+  "kit": "AI-DEV-STARTER",
+  "url": "https://github.com/HarryPehkonen/AI-DEV-STARTER",
+  "revision": "<40-hex sha of the kit's PUBLISHED commit this repo's process was wired from>",
+  "recorded_at": "YYYY-MM-DD",
+  "record_kind": "at-copy",
+  "record_note": "one or two sentences: when this repo was wired, and why anything is adapted",
+  "adopted_fixes": [],
+  "declined_fixes": []
+}
+```
+
+That is the whole file for a record written after 2026-10-07 — `revision`, a note, and the two
+decision lists. There is no `files[]`: a KitCI-era repo copies no kit file (the gate is its own
+`gate.toml`, the engine is a binary, and the hooks are taken from a converted repo). `files[]`
+stays valid in a record that carries it and the checker still verifies every entry; the field is
+simply no longer written. The rest of this document is about that older, fingerprinting shape —
+read it as "records that carry `files[]`", and note that the two statements which used to need a
+hash per file ("has the kit moved?" / "did the copy drift?") are answered for a new record by
+`revision` alone, because there is no copy to drift.
+
+The `files[]` shape, for records that carry it:
 
 ```json
 {
@@ -73,7 +150,12 @@ the artifacts it governs.
 }
 ```
 
-Field rules:
+(One guard for the decision lists, unchanged: a `probe` path names a kit probe. Seven of them are
+retired as of 2026-10-07 — `docs/KIT-FIXES.md`, "Retired fixes" — and a record that declines one
+still names it by path, which is what it declined; nothing is re-pointed.)
+
+Field rules (for a record that carries `files[]`; `revision`, `record_kind` and `record_note` apply
+to both shapes):
 
 - `revision` is the **published** commit — verify with `git ls-remote origin` against `git rev-parse HEAD`.
   Never record a local-only SHA: a reader must be able to `git fetch` it. It names the revision the
@@ -166,8 +248,9 @@ Two things this rule is not:
 
 ## The rule that keeps it true
 
-**Any future commit that edits a copied artifact must update that artifact's `repo_sha256` in the same
-commit** — and any commit that *moves* one must update its `repo_path` too. **A commit that moves
+**In a record that carries `files[]`: any future commit that edits a copied artifact must update that
+artifact's `repo_sha256` in the same commit** — and any commit that *moves* one must update its
+`repo_path` too. **A commit that moves
 `revision` re-reads every `kit_sha256` in `files[]` in that same commit**, because the move spans every
 kit commit in between (see above). A record that is allowed to drift silently is worse than no record.
 
@@ -201,6 +284,14 @@ reports:
 | **FAIL** | the kit's HEAD is unpublished or its tree is dirty — a reader could not fetch `revision` |
 | **REPORT** | `behind the kit by N commit(s)` — the record states what the repo was wired from; the kit growing is the kit working, not the repo being broken |
 | **REPORT** | every kit probe this record neither adopted nor declined, *with the result of running it against this repo's gate* — so the line says whether the repo is actually missing the fix |
+
+Every row above is still exactly what the checker does. Three of them concern `files[]`, and so they
+concern a record that carries it: **since 2026-10-07 a new record has no `files[]` at all** (L3,
+above), and for such a record the files-related FAILs simply have nothing to fail on. Likewise the
+"neither adopted nor declined" REPORT now lists the two probes that remain: seven were retired on
+2026-10-07 because their subject — a copied gate script — no longer exists anywhere on the fleet.
+Their guarantees did not go; `docs/KIT-FIXES.md` → "Retired fixes" is the index of where each one
+lives now, with the command that shows it.
 
 Measured on this rule's own edge, 2026-09-20 (card `t_c5e5e11f`): the kit commit that moved this file
 into the kit reported `behind the kit by 1 commit(s)` on the four records that had been level with
@@ -267,6 +358,16 @@ decision lives:
 
 
 ### So how drift is actually caught: probes
+
+> **2026-10-07 (L3).** This mechanism covers the artifacts a repo still *copies*
+> (`templates/cpp/release.sh`, the templates of the two documents, the `.gitignore` recipe). Seven
+> probes whose subject was a **copied gate script** are retired — `tidy-baseline`,
+> `gate-stage-guards`, `git-index-file`, `hook-tiers-agree`, `format-checks-staged`,
+> `format-checks-staged-deno`, `optimized-stage` — because no repo on the fleet has a gate script
+> any more. Their guarantees moved to the engine's runner, to a named stage script in each repo's
+> own policy, or to a structural fact; `docs/KIT-FIXES.md` → "Retired fixes" is the index, and it
+> carries the command that shows each one. Read the rest of this section as the rule for what is
+> still copied.
 
 **A fix that must propagate ships a probe.**
 
